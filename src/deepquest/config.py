@@ -17,6 +17,8 @@ class AgentSettings(BaseSettings):
     agent_plan_model: str = "claude-haiku-5-5"
     agent_fallback_model: str = "claude-opus-5-5"
     agent_plan_effort: Literal["low", "medium", "high", "xhigh", "max"] = "medium"
+    agent_validate_model: str = "claude-opus-5-5"
+    agent_validate_effort: Literal["low", "medium", "high", "xhigh", "max"] = "medium"
     agent_timeout_s: float = 60.0
 
 

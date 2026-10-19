@@ -190,6 +190,12 @@ class TaskAction(StrEnum):
     OPEN = "open"
     REMOVE = "remove"
     BACKLOG = "backlog"
+    START = "start"
+    PAUSE = "pause"
+    DONE = "done"
+    WHY = "why"
+    RECHECK = "recheck"
+    DISPUTE = "dispute"
 
 
 class TaskCb(CallbackData, prefix="task"):
@@ -215,12 +221,59 @@ def task_card(task: Task) -> InlineKeyboardMarkup | None:
         builder.adjust(*sizes, 3)
         return builder.as_markup()
     if task.status == TaskStatus.OPEN:
+        sizes = []
+        if task.is_estimated:
+            _task_button(builder, texts.START_BUTTON, TaskAction.START, task)
+            _task_button(builder, texts.DONE_BUTTON, TaskAction.DONE, task)
+            sizes.append(2)
         _task_button(builder, texts.EDIT_TASK_BUTTON, TaskAction.EDIT, task)
         _task_button(builder, texts.REMOVE_TASK_BUTTON, TaskAction.REMOVE, task)
         builder.button(text=texts.BACKLOG_BUTTON, callback_data=TaskCb(action=TaskAction.BACKLOG))
-        builder.adjust(2, 1)
+        builder.adjust(*sizes, 2, 1)
         return builder.as_markup()
+    if task.status == TaskStatus.RUNNING:
+        return timer_running(task, with_backlog=True)
     return None
+
+
+def saved(task: Task) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    _task_button(builder, texts.START_BUTTON, TaskAction.START, task)
+    return builder.as_markup()
+
+
+def timer_running(task: Task, *, with_backlog: bool = False) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    _task_button(builder, texts.PAUSE_BUTTON, TaskAction.PAUSE, task)
+    _task_button(builder, texts.DONE_BUTTON, TaskAction.DONE, task)
+    if with_backlog:
+        builder.button(text=texts.BACKLOG_BUTTON, callback_data=TaskCb(action=TaskAction.BACKLOG))
+    builder.adjust(2, 1)
+    return builder.as_markup()
+
+
+def timer_paused(task: Task) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    _task_button(builder, texts.RESUME_BUTTON, TaskAction.START, task)
+    _task_button(builder, texts.DONE_BUTTON, TaskAction.DONE, task)
+    builder.button(text=texts.BACKLOG_BUTTON, callback_data=TaskCb(action=TaskAction.BACKLOG))
+    builder.adjust(2, 1)
+    return builder.as_markup()
+
+
+def verdict(task: Task, *, can_dispute: bool) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    _task_button(builder, texts.WHY_BUTTON, TaskAction.WHY, task)
+    if can_dispute:
+        _task_button(builder, texts.DISPUTE_BUTTON, TaskAction.DISPUTE, task)
+    builder.adjust(2)
+    return builder.as_markup()
+
+
+def recheck(task: Task) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    _task_button(builder, texts.RECHECK_BUTTON, TaskAction.RECHECK, task)
+    return builder.as_markup()
 
 
 def clarifying(task: Task) -> InlineKeyboardMarkup:

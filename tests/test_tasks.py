@@ -133,7 +133,7 @@ async def test_save_puts_task_into_backlog(
 
     await harness.tap(ME, texts.SAVE_BUTTON)
     assert texts.TASK_SAVED in harness.last_text
-    assert harness.screens[-1].reply_markup is None
+    harness.button(texts.START_BUTTON)
 
     await harness.send(ME, "/backlog")
     assert "1 задача" in harness.last_text

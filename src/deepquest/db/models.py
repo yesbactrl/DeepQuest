@@ -1,8 +1,8 @@
-from datetime import UTC, datetime, time
+from datetime import UTC, date, datetime, time
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import JSON, BigInteger, Enum, ForeignKey, MetaData, String, Text
+from sqlalchemy import JSON, BigInteger, Enum, ForeignKey, Index, MetaData, String, Text, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from deepquest.db.types import UTCDateTime
@@ -152,6 +152,89 @@ class AgentCall(Base):
     tokens_out: Mapped[int | None]
     latency_ms: Mapped[int]
     error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class TimeEntry(Base):
+    """Отрезок работы по таймеру. Открытый отрезок (ended_at пуст) у пользователя один."""
+
+    __tablename__ = "time_entries"
+    __table_args__ = (
+        Index(
+            "uq_time_entries_running",
+            "user_id",
+            unique=True,
+            sqlite_where=text("ended_at IS NULL"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), index=True)
+    started_at: Mapped[datetime]
+    ended_at: Mapped[datetime | None]
+    # manual — пауза, switched — запустили другую задачу, done — «Готово».
+    stop_reason: Mapped[str | None] = mapped_column(String(16))
+
+
+class Report(Base):
+    __tablename__ = "reports"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), index=True)
+    text: Mapped[str] = mapped_column(Text)
+    # [{"kind": "photo" | "document" | "link", "file_id"?, "mime_type"?, "url"?}]
+    proofs: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    honor_mode: Mapped[bool]
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class ValidationVerdict(StrEnum):
+    ACCEPTED = "accepted"
+    PARTIAL = "partial"
+    REJECTED = "rejected"
+
+
+class Validation(Base):
+    """Вердикт агента по отчёту. Оспаривание добавляет новую запись, старую не трогает."""
+
+    __tablename__ = "validations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), index=True)
+    report_id: Mapped[int] = mapped_column(ForeignKey("reports.id", ondelete="CASCADE"))
+    agent_call_id: Mapped[int | None] = mapped_column(
+        ForeignKey("agent_calls.id", ondelete="SET NULL")
+    )
+    verdict: Mapped[ValidationVerdict] = mapped_column(_str_enum(ValidationVerdict))
+    reason: Mapped[str] = mapped_column(Text)
+    comment: Mapped[str] = mapped_column(Text)
+    is_dispute: Mapped[bool]
+    dispute_text: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class XpKind(StrEnum):
+    TASK = "task"
+    CORRECTION = "correction"  # пересчёт после оспаривания: разница к прошлому начислению
+
+
+class XpEvent(Base):
+    """Журнал XP: только дописывается. Уровни и суммы считаются из него."""
+
+    __tablename__ = "xp_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    task_id: Mapped[int | None] = mapped_column(
+        ForeignKey("tasks.id", ondelete="SET NULL"), index=True
+    )
+    goal_id: Mapped[int | None] = mapped_column(ForeignKey("goals.id", ondelete="SET NULL"))
+    kind: Mapped[XpKind] = mapped_column(_str_enum(XpKind))
+    amount: Mapped[int]
+    breakdown: Mapped[dict[str, Any]] = mapped_column(JSON)
+    logical_date: Mapped[date]
+    season: Mapped[str] = mapped_column(String(7), index=True)  # «2026-10»
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 

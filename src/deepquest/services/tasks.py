@@ -73,13 +73,24 @@ async def get_task(session: AsyncSession, user: User, task_id: int) -> Task | No
 
 
 async def list_backlog(session: AsyncSession, user: User) -> list[Task]:
+    """Задачи в работе: открытые и та, по которой сейчас идёт таймер."""
     tasks = await session.scalars(
         select(Task)
-        .where(Task.user_id == user.id, Task.status == TaskStatus.OPEN)
+        .where(Task.user_id == user.id, Task.status.in_([TaskStatus.OPEN, TaskStatus.RUNNING]))
         .order_by(Task.value_mult.desc().nulls_last(), Task.created_at)
         .options(selectinload(Task.goal).selectinload(Goal.parent))
     )
     return list(tasks)
+
+
+async def last_awaiting_report(session: AsyncSession, user: User) -> Task | None:
+    task_id = await session.scalar(
+        select(Task.id)
+        .where(Task.user_id == user.id, Task.status == TaskStatus.AWAITING_REPORT)
+        .order_by(Task.updated_at.desc())
+        .limit(1)
+    )
+    return await get_task(session, user, task_id) if task_id is not None else None
 
 
 async def _add(session: AsyncSession, task: Task) -> Task:

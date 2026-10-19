@@ -29,5 +29,7 @@ def create_agent(settings: AgentSettings, client: anthropic.AsyncAnthropic | Non
             plan_model=settings.agent_plan_model,
             fallback_model=settings.agent_fallback_model,
             plan_effort=settings.agent_plan_effort,
+            validate_model=settings.agent_validate_model,
+            validate_effort=settings.agent_validate_effort,
         ),
     )

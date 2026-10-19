@@ -15,7 +15,8 @@ from deepquest.bot.filters import TEXT_ANSWER
 from deepquest.bot.keyboards import TaskAction, TaskCb
 from deepquest.bot.ui import drop_keyboard, edit_or_send, show_in_place
 from deepquest.db.models import Task, TaskStatus, User
-from deepquest.services import planning, tasks
+from deepquest.services import planning, tasks, timer
+from deepquest.services.days import local_time
 from deepquest.services.planning import PlanOutcome
 
 
@@ -212,7 +213,9 @@ async def save_requested(
     except tasks.TaskError:
         await callback.answer(texts.STALE_BUTTON)
         return
-    await show_in_place(callback, bot, texts.task_card(task, texts.TASK_SAVED))
+    await show_in_place(
+        callback, bot, texts.task_card(task, texts.TASK_SAVED), keyboards.saved(task)
+    )
 
 
 async def cancel_requested(
@@ -257,10 +260,14 @@ async def open_requested(
     callback: CallbackQuery, callback_data: TaskCb, bot: Bot, session: AsyncSession, user: User
 ) -> None:
     task = await tasks.get_task(session, user, callback_data.task_id)
-    if task is None or task.status != TaskStatus.OPEN:
+    if task is None or task.status not in {TaskStatus.OPEN, TaskStatus.RUNNING}:
         await callback.answer(texts.TASK_NOT_FOUND, show_alert=True)
         return
-    await show_in_place(callback, bot, texts.task_card(task), keyboards.task_card(task))
+    status = None
+    entry = await timer.running_entry(session, user)
+    if task.status == TaskStatus.RUNNING and entry is not None:
+        status = texts.running_since(local_time(user, entry.started_at))
+    await show_in_place(callback, bot, texts.task_card(task, status), keyboards.task_card(task))
 
 
 async def remove_requested(

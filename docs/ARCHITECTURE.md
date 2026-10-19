@@ -40,10 +40,10 @@ Telegram ⇄ long polling
 | --- | --- | --- |
 | `users` | пользователь и настройки | `telegram_id`, `tz`, `day_boundary_hour`, `daily_norm_min`, `morning_at`, `evening_at`, `freezes_per_week` |
 | `goals` | цели и направления (дерево из двух уровней); «зачем» обязательно у цели, у направления — по желанию | `user_id`, `parent_id`, `title`, `why`, `status` (active / archived), `archived_at` |
-| `tasks` | задачи | `goal_id`, `title`, `expected_result`, `estimate_min`, `value_mult`, `mult_reason`, `status`, `source_text`, `clarify_question`, `clarify_answer`, `agent_call_id`; `planned_for` (задача дня) появится в M3 |
-| `time_entries` | отрезки таймера | `user_id`, `task_id`, `started_at`, `ended_at`, `stop_reason` (manual / switched / watchdog) |
+| `tasks` | задачи | `goal_id`, `title`, `expected_result`, `estimate_min`, `value_mult`, `mult_reason`, `status`, `source_text`, `clarify_question`, `clarify_answer`, `agent_call_id`; `planned_for` (задача дня) появится в M5 вместе с утренним сообщением |
+| `time_entries` | отрезки таймера; частичный уникальный индекс не даёт открыть два сразу | `user_id`, `task_id`, `started_at`, `ended_at`, `stop_reason` (manual / switched / done / watchdog) |
 | `reports` | отчёты и пруфы | `task_id`, `text`, `proofs` (JSON: `file_id` фото, ссылки), `honor_mode` |
-| `validations` | вердикты агента | `report_id`, `verdict`, `validation_mult`, `explanation`, `is_dispute`, `agent_call_id` |
+| `validations` | вердикты агента; оспаривание добавляет новую запись | `report_id`, `verdict`, `reason`, `comment`, `is_dispute`, `dispute_text`, `agent_call_id` |
 | `xp_events` | журнал XP, только дописывается | `task_id`, `goal_id`, `kind`, `amount`, `breakdown` (JSON), `logical_date`, `season` |
 | `day_stats` | итог логического дня | `logical_date`, `focus_min`, `norm_min` (снимок нормы на тот день), `status`: met / missed / frozen |
 | `agent_calls` | лог вызовов Claude, в том числе неудачных | `kind`, `prompt_version`, `model`, `request`, `response`, `stop_reason`, `tokens_in`, `tokens_out`, `latency_ms`, `error` |
@@ -71,7 +71,7 @@ XP = round( min(факт_мин, 2 × оценка_мин) × value_mult × vali
 
 - Базовая ставка — 1 XP за минуту фактического времени. Это совпадает с примером из спеки: 2 ч × 1.5 = 180 XP.
 - `value_mult` агент ставит при создании задачи, выбирая из набора {0.5, 0.7, 1.0, 1.2, 1.5, 2.0}. Бонус за «некомфортность» уже входит в него (×1.5 — «реальный шаг, некомфортно»).
-- `validation_mult` агент ставит по отчёту: «засчитано» — 1.0, «частично» — 0.7, «не засчитано» — 0.
+- `validation_mult` следует из вердикта агента по отчёту: «засчитано» — 1.0, «частично» — 0.7, «не засчитано» — 0. Сам множитель агент не выбирает, только вердикт.
 - `proof_mult` равен 1.0 с пруфом и 0.8 в режиме «на честном слове».
 - Потолок в 2× оценки защищает от забытого таймера.
 - Все коэффициенты лежат в конфиге. `breakdown` в `xp_events` хранит каждый множитель, и по кнопке «Почему столько?» бот показывает расчёт.
@@ -99,7 +99,7 @@ XP = round( min(факт_мин, 2 × оценка_мин) × value_mult × vali
 - Вызовы идут через официальный SDK `anthropic`: `messages.create` с `output_config.format` (JSON-схема из Pydantic через `anthropic.transform_schema`). Ответ разбираем сами: сначала проверяем `stop_reason`, потом валидируем текст Pydantic-моделью — `messages.parse` упал бы на отказе раньше, чем мы увидим причину. Множители заданы через `Literal`, поэтому агент не может придумать ×3.7, а сервис ещё раз приводит оценку к допустимым значениям (`services/tasks.normalize_draft`).
 - Модели: `plan_task` работает на `claude-haiku-5-5`, `validate_report` и `weekly_review` — на `claude-opus-5-5`. Модель задаётся в конфиге отдельно для каждого промпта, так что её можно поменять без правки кода. У обеих моделей мышление адаптивное, глубину регулирует `effort`: начинаем с `medium`, ревью — `high`, потом подбираем на реальных задачах.
 - Агент задаёт не больше одного уточняющего вопроса. Если ответ снова размытый, он сохраняет лучшую формулировку, которую смог составить.
-- Сбои API и отказы модели (`stop_reason == "refusal"`) обрабатываются так: задача сохраняется черновиком «без оценки», бот предлагает повторить, а валидация уходит в очередь на повтор. Для Opus включаем серверный fallback модели (`fallbacks: "default"`). У Haiku серверного fallback нет, поэтому при отказе `plan_task` один раз повторяется на Opus.
+- Сбои API и отказы модели (`stop_reason == "refusal"`) обрабатываются так: задача сохраняется черновиком «без оценки», а отчёт сохраняется и ждёт кнопки «Проверить ещё раз» (автоматический повтор — в M5 вместе с планировщиком). Все запросы идут через `beta.messages` с серверным fallback (`fallbacks: "default"`, `server-side-fallback-2026-07-01`). У Haiku серверного fallback нет, поэтому при отказе `plan_task` один раз повторяется на Opus.
 - Промпты лежат файлами в `agent/prompts/`. Версия — первые 8 символов SHA-256 текста, поэтому меняется сама при любой правке; она пишется в `agent_calls`.
 - `plan_task` работает в трёх режимах с одним системным промптом: новая мысль (`PlanResult`: вопрос или список задач), ответ на уточнение (`TasksResult`, вопросов больше нет) и правка карточки или повторная оценка (`TaskDraft`).
 - Перед вызовом модели сервис фиксирует транзакцию, чтобы SQLite не держал блокировку записи, пока ждём ответ.
@@ -167,18 +167,19 @@ DeepQuest/
 │   ├── __main__.py           # запуск: миграции, затем бот + планировщик в одном процессе
 │   ├── config.py
 │   ├── bot/
-│   │   ├── routers/          # onboarding, common; дальше goals, tasks, timer, report, stats
+│   │   ├── routers/          # onboarding, goals, work (таймер и отчёт), tasks, common
 │   │   ├── setup.py          # сборка Dispatcher: middleware, роутеры, хранилище FSM
 │   │   ├── keyboards.py
 │   │   ├── middlewares.py    # whitelist, сессия БД, текущий пользователь
 │   │   ├── parsing.py        # разбор ввода: пояс, длительность, время
+│   │   ├── proofs.py         # отчёт из сообщения: текст, ссылки, скрины; скачивание картинок
 │   │   ├── ui.py             # перерисовать сообщение на месте или прислать новое
 │   │   ├── storage.py        # FSM aiogram в SQLite
 │   │   └── texts.py          # все тексты бота в одном месте
 │   ├── services/
-│   │   ├── goals.py, tasks.py, timer.py, validation.py
+│   │   ├── goals.py, tasks.py, timer.py, validation.py, agent_log.py
 │   │   ├── planning.py       # оформление задач агентом: мысль, уточнение, правка
-│   │   ├── xp.py             # формула XP и уровни, чистые функции
+│   │   ├── xp.py             # формула XP и журнал начислений; уровни — в M4
 │   │   ├── days.py           # логический день, сезон
 │   │   ├── streak.py         # норма, стрик, заморозки
 │   │   ├── recommend.py      # 3 задачи на утро
@@ -188,7 +189,7 @@ DeepQuest/
 │   │   ├── schemas.py        # Pydantic-схемы ответов и контекст для агента
 │   │   ├── setup.py          # клиент и агент из настроек
 │   │   ├── __main__.py       # проверка промпта на живом API: python -m deepquest.agent
-│   │   └── prompts/          # plan_task.md, дальше validate_report.md
+│   │   └── prompts/          # plan_task.md, validate_report.md
 │   ├── db/
 │   │   ├── models.py
 │   │   ├── types.py          # UTCDateTime: в базе UTC, наружу aware datetime
@@ -223,7 +224,7 @@ DeepQuest/
 | M0 | каркас: `uv`, конфиг, БД и миграции, бот с whitelist, онбординг через `/start` | бот отвечает только тебе и помнит пояс и норму |
 | M1 | цели: `/goals` — список, карточка, «зачем», направления, переименование, архив; после онбординга бот сразу просит первую цель | заведены 2–4 цели |
 | M2 | задачи текстом: `plan_task`, карточка, Сохранить / Поправить / Отмена, уточнение, бэклог (`/backlog`), черновик без оценки при недоступном агенте | мысль превращается в карточку и попадает в бэклог |
-| M3 | таймер и отчёт: ▶️ / ⏸ / `/done`, отчёт и пруф, `validate_report`, журнал XP, «Почему столько?» | задача закрыта, XP начислен и объяснён |
+| M3 | таймер и отчёт: ▶️ / ⏸ / `/go` / `/pause` / `/done`, отчёт и пруф (скрины уходят агенту картинками), `validate_report`, журнал XP, «Почему столько?», одно оспаривание с поправкой в журнале | задача закрыта, XP начислен и объяснён |
 | M4 | норма, стрик, заморозки, уровни, закрытие дня | `/stats` показывает правду |
 | M5 | утро, вечер, сторож таймера | сообщения приходят вовремя и по одному разу |
 | M6 | автозапуск через `launchd`, логи, бэкап | бот переживает перезагрузку и сон Mac; начинаем две недели использования |

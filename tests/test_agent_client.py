@@ -1,5 +1,6 @@
 """ClaudeAgent против фейкового клиента Anthropic: разбор ответа, отказы, ошибки."""
 
+import base64
 import json
 from typing import Any
 
@@ -9,7 +10,7 @@ import pytest
 from anthropic.types import Message
 
 from deepquest.agent.client import AgentConfig, AgentError, ClaudeAgent, Prompt, render_goals
-from deepquest.agent.schemas import GoalContext
+from deepquest.agent.schemas import CurrentTask, GoalContext, ProofImage, ReportContext
 
 GOALS = [
     GoalContext(
@@ -70,9 +71,15 @@ class FakeMessages:
         return response
 
 
+class FakeBeta:
+    def __init__(self, messages: FakeMessages) -> None:
+        self.messages = messages
+
+
 class FakeClaude:
     def __init__(self, *responses: Message | Exception) -> None:
         self.messages = FakeMessages(list(responses))
+        self.beta = FakeBeta(self.messages)
 
 
 def _agent(client: FakeClaude | None) -> ClaudeAgent:
@@ -157,3 +164,45 @@ def test_prompt_version_tracks_text() -> None:
     prompt = Prompt.load("plan_task")
     assert prompt.version == Prompt("plan_task", prompt.text).version
     assert prompt.version != Prompt("plan_task", prompt.text + " ").version
+
+
+async def test_validate_report_sends_screenshot_first_with_server_fallback() -> None:
+    answer = json.dumps({"verdict": "accepted", "reason": "Запуск виден", "comment": "Отлично"})
+    client = FakeClaude(_message(answer, model="claude-opus-5-5"))
+    report = ReportContext(
+        task=CurrentTask(
+            title="Запустить кампанию",
+            expected_result="Кампания запущена",
+            goal_id=2,
+            estimate_min=180,
+            value_mult=1.5,
+            mult_reason="реальный шаг",
+        ),
+        goal="Свой доход → Арбитраж трафика",
+        goal_why="Не зависеть от зарплаты",
+        actual_min=120,
+        report_text="Запустил на $20",
+        links=("https://ads.example/1",),
+        images=(ProofImage("image/png", b"img"),),
+        other_files=0,
+        honor_mode=False,
+    )
+
+    result = await _agent(client).validate_report(report)
+
+    assert result.output.verdict == "accepted"
+    [request] = client.messages.requests
+    assert request["model"] == "claude-opus-5-5"
+    assert (request["fallbacks"], request["betas"]) == (
+        "default",
+        ["server-side-fallback-2026-07-01"],
+    )
+    image, text = request["messages"][0]["content"]
+    assert image["type"] == "image"
+    assert base64.b64decode(image["source"]["data"]) == b"img"
+    assert "Фактическое время по таймеру: 120 мин (оценка: 180 мин)" in text["text"]
+    assert "Ссылки: https://ads.example/1" in text["text"]
+    # В журнал вызовов картинка не попадает, только их число.
+    [call] = result.calls
+    assert call.request["images"] == 1
+    assert image["source"]["data"] not in json.dumps(call.request)

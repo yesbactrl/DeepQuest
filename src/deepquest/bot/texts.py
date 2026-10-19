@@ -4,9 +4,10 @@ from datetime import UTC, datetime, time
 from html import escape
 from zoneinfo import ZoneInfo
 
-from deepquest.db.models import Goal, Task, User
+from deepquest.db.models import Goal, Task, TaskStatus, User
 from deepquest.services.goals import MAX_TITLE_LEN, MAX_WHY_LEN
 from deepquest.services.users import MAX_DAILY_NORM_MIN, MIN_DAILY_NORM_MIN
+from deepquest.services.validation import Explanation, ValidationOutcome
 
 
 def format_minutes(minutes: int) -> str:
@@ -123,6 +124,9 @@ STALE_BUTTON = "Эта кнопка уже не работает."
 
 COMMANDS = {
     "start": "Начать и настроиться",
+    "go": "Запустить таймер",
+    "pause": "Поставить таймер на паузу",
+    "done": "Закончить задачу и сдать отчёт",
     "backlog": "Бэклог задач",
     "goals": "Цели и направления",
     "settings": "Настройки",
@@ -317,9 +321,122 @@ def backlog(tasks: list[Task]) -> str:
             meta.append(format_mult(task.value_mult))
         if task.goal:
             meta.append(escape(goal_path(task.goal)))
-        lines.append(f"{number}. {escape(task.title)}")
+        running = "⏱ " if task.status == TaskStatus.RUNNING else ""
+        lines.append(f"{number}. {running}{escape(task.title)}")
         if meta:
             lines.append(f"    <i>{' · '.join(meta)}</i>")
     if len(tasks) > BACKLOG_LIMIT:
         lines += ["", f"…и ещё {len(tasks) - BACKLOG_LIMIT}"]
+    return "\n".join(lines)
+
+
+# Таймер, отчёт и XP
+
+START_BUTTON = "▶️ Старт"
+RESUME_BUTTON = "▶️ Продолжить"
+PAUSE_BUTTON = "⏸ Пауза"
+DONE_BUTTON = "✅ Готово"
+WHY_BUTTON = "❓ Почему столько?"
+DISPUTE_BUTTON = "⚖️ Оспорить"
+RECHECK_BUTTON = "🔄 Проверить ещё раз"
+
+NO_TIMER = "Таймер не запущен. Открой задачу в /backlog и нажми «Старт»."
+PICK_TASK = "Выбери задачу и нажми «Старт»."
+NOT_ESTIMATED = "Сначала нужна оценка: нажми «Оценить ещё раз» на карточке задачи."
+CHECKING = "⏳ Проверяю отчёт…"
+REPORT_NEEDS_CONTENT = "Пришли отчёт текстом, скрином или ссылкой."
+REPORT_SAVED_AGENT_DOWN = (
+    "⚠️ Отчёт сохранён, но агент сейчас недоступен. Нажми «Проверить ещё раз» чуть позже."
+)
+ASK_DISPUTE = "С чем не согласен? Напиши, что я упустил: что именно сделано, факты, ссылки."
+CANNOT_DISPUTE = "Эту проверку уже нельзя оспорить: оспорить можно один раз."
+NO_EXPLANATION = "По этой задаче ещё нет начисления."
+
+VERDICT_HEADERS = {
+    "accepted": "✅ Засчитано",
+    "partial": "🟡 Засчитано частично",
+    "rejected": "❌ Не засчитано",
+}
+VERDICT_LABELS = {"accepted": "засчитано", "partial": "частично", "rejected": "не засчитано"}
+
+
+def running_since(started_local: datetime) -> str:
+    return f"⏱ Таймер идёт с {started_local:%H:%M}"
+
+
+def timer_started(
+    task: Task,
+    started_local: datetime,
+    before_min: int,
+    paused: Task | None = None,
+    paused_min: int = 0,
+) -> str:
+    lines = []
+    if paused is not None:
+        lines += [f"⏸ «{escape(paused.title)}» на паузе, по ней {format_minutes(paused_min)}.", ""]
+    since = f"Таймер идёт с {started_local:%H:%M}."
+    if before_min:
+        since += f" До этого по задаче: {format_minutes(before_min)}."
+    lines += [
+        f"⏱ <b>{escape(task.title)}</b>",
+        since,
+        "",
+        "Закончишь — жми «Готово», и я попрошу короткий отчёт.",
+    ]
+    return "\n".join(lines)
+
+
+def timer_paused(task: Task, total_min: int) -> str:
+    return f"⏸ Пауза: <b>{escape(task.title)}</b>\nВсего по задаче: {format_minutes(total_min)}."
+
+
+def ask_report(task: Task, total_min: int) -> str:
+    lines = [f"✅ <b>{escape(task.title)}</b>: {format_minutes(total_min)} по таймеру.", ""]
+    if total_min == 0:
+        lines += ["⚠️ Таймер по задаче не запускался, поэтому XP будет 0.", ""]
+    lines.append(
+        "Что получилось? Напиши коротко: что сделал и что понял. Приложи пруф — скрин или "
+        "ссылку. Без пруфа засчитаю «на честном слове» с ×0.8."
+    )
+    return "\n".join(lines)
+
+
+def _signed_xp(amount: int) -> str:
+    return f"+{amount} XP" if amount > 0 else f"{amount} XP"
+
+
+def verdict_result(outcome: ValidationOutcome, *, disputed: bool = False) -> str:
+    assert outcome.validation is not None
+    header = VERDICT_HEADERS[outcome.validation.verdict.value]
+    if disputed:
+        header = f"⚖️ Пересмотрел. {header}"
+    return (
+        f"{header} · {_signed_xp(outcome.xp_delta)}\n\n"
+        f"{escape(outcome.validation.comment)}\n\n"
+        f"Всего: {outcome.total_xp} XP"
+    )
+
+
+def why(explanation: Explanation, task: Task) -> str:
+    b = explanation.breakdown
+    time_line = f"• Время: {format_minutes(b.counted_min)}"
+    if b.capped:
+        time_line += (
+            f" (по таймеру {format_minutes(b.actual_min)}, "
+            "но засчитываю не больше двух оценок задачи)"
+        )
+    value_reason = f" — {escape(task.mult_reason)}" if task.mult_reason else ""
+    proof = "на честном слове" if b.honor_mode else "есть"
+    lines = [
+        f"<b>Почему {b.amount} XP</b>",
+        "",
+        time_line,
+        f"• Ценность задачи: {format_mult(b.value_mult)}{value_reason}",
+        f"• Проверка отчёта: {VERDICT_LABELS[b.verdict]} {format_mult(b.validation_mult)} — "
+        f"{escape(explanation.validation.reason)}",
+        f"• Пруф: {proof} {format_mult(b.proof_mult)}",
+        "",
+        f"{b.counted_min} мин × {b.value_mult:g} × {b.validation_mult:g} × {b.proof_mult:g} "
+        f"= {b.amount} XP",
+    ]
     return "\n".join(lines)

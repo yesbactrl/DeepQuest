@@ -49,3 +49,37 @@ class CurrentTask:
     estimate_min: int | None
     value_mult: float | None
     mult_reason: str | None
+
+
+Verdict = Literal["accepted", "partial", "rejected"]
+
+
+class ValidationResult(BaseModel):
+    verdict: Verdict = Field(description="accepted, partial или rejected по правилам из инструкции")
+    reason: str = Field(description="Одно предложение: почему такой вердикт")
+    comment: str = Field(description="Короткий живой ответ пользователю, 1–2 предложения, без XP")
+
+
+@dataclass(frozen=True)
+class ProofImage:
+    media_type: str
+    data: bytes
+
+
+@dataclass(frozen=True)
+class ReportContext:
+    """Всё, что агент знает о сделанной задаче, когда проверяет отчёт."""
+
+    task: CurrentTask
+    goal: str | None  # «Свой доход → Арбитраж трафика»
+    goal_why: str | None
+    actual_min: int
+    report_text: str
+    links: tuple[str, ...]
+    images: tuple[ProofImage, ...]
+    other_files: int  # пруфы, которые агент не видит (например, PDF)
+    honor_mode: bool
+    # Заполнено при оспаривании: прошлый вердикт и аргумент пользователя.
+    previous_verdict: str | None = None
+    previous_reason: str | None = None
+    dispute: str | None = None

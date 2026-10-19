@@ -8,16 +8,34 @@ from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.base import BaseSession
 from aiogram.enums import ParseMode
-from aiogram.methods import EditMessageText, SendMessage, TelegramMethod
-from aiogram.types import CallbackQuery, Chat, InlineKeyboardMarkup, Message, Update
+from aiogram.methods import EditMessageText, GetFile, SendMessage, TelegramMethod
+from aiogram.types import (
+    CallbackQuery,
+    Chat,
+    File,
+    InlineKeyboardMarkup,
+    Message,
+    PhotoSize,
+    Update,
+)
 from aiogram.types import User as TelegramUser
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from deepquest.agent.client import AgentCallLog, AgentError, AgentResult
-from deepquest.agent.schemas import CurrentTask, GoalContext, PlanResult, TaskDraft, TasksResult
+from deepquest.agent.schemas import (
+    CurrentTask,
+    GoalContext,
+    PlanResult,
+    ReportContext,
+    TaskDraft,
+    TasksResult,
+    ValidationResult,
+)
 from deepquest.bot.setup import build_dispatcher
 from deepquest.db.migrate import upgrade_database
 from deepquest.db.session import create_engine, create_sessionmaker
+
+FAKE_FILE_BYTES = b"\x89PNG fake screenshot"
 
 
 @pytest.fixture
@@ -62,6 +80,12 @@ class FakeTelegramSession(BaseSession):
                 chat=Chat(id=int(method.chat_id), type="private"),
                 text=method.text,
             )
+        if isinstance(method, GetFile):
+            return File(
+                file_id=method.file_id,
+                file_unique_id=method.file_id,
+                file_path=f"photos/{method.file_id}.jpg",
+            )
         return True
 
     def message_id_of(self, screen: SendMessage | EditMessageText) -> int:
@@ -71,8 +95,8 @@ class FakeTelegramSession(BaseSession):
         return self.message_ids[id(screen)]
 
     async def stream_content(self, *args: Any, **kwargs: Any) -> AsyncGenerator[bytes]:
-        raise NotImplementedError
-        yield b""
+        # Любой скачанный файл — эти байты: для проверки пруфов-скриншотов этого хватает.
+        yield FAKE_FILE_BYTES
 
     async def close(self) -> None:
         pass
@@ -106,12 +130,19 @@ class BotHarness:
         return TelegramUser(id=user_id, is_bot=False, first_name="Test")
 
     async def send(self, user_id: int, text: str) -> None:
+        await self._feed_message(user_id, text=text)
+
+    async def send_photo(self, user_id: int, file_id: str, caption: str | None = None) -> None:
+        photo = [PhotoSize(file_id=file_id, file_unique_id=file_id, width=1280, height=720)]
+        await self._feed_message(user_id, photo=photo, caption=caption)
+
+    async def _feed_message(self, user_id: int, **content: Any) -> None:
         message = Message(
             message_id=self._update_id + 1000,
             date=datetime.now(UTC),
             chat=Chat(id=user_id, type="private"),
             from_user=self._user(user_id),
-            text=text,
+            **content,
         )
         await self.dispatcher.feed_update(
             self.bot, Update(update_id=self._next_update_id(), message=message)
@@ -205,7 +236,9 @@ class FakeAgent:
         self.plans: list[PlanResult | AgentError] = []
         self.answers: list[TasksResult | AgentError] = []
         self.revisions: list[TaskDraft | AgentError] = []
+        self.validations: list[ValidationResult | AgentError] = []
         self.calls: list[tuple[str, dict[str, Any]]] = []
+        self.reports: list[ReportContext] = []
 
     @staticmethod
     def _next[T](queue: list[T | AgentError], kind: str) -> AgentResult[T]:
@@ -235,3 +268,12 @@ class FakeAgent:
     ) -> AgentResult[TaskDraft]:
         self.calls.append(("revise", {"text": text, "current": current, "correction": correction}))
         return self._next(self.revisions, "plan_task_revise")
+
+    async def validate_report(self, report: ReportContext) -> AgentResult[ValidationResult]:
+        self.reports.append(report)
+        self.calls.append(("validate", {"report": report}))
+        return self._next(self.validations, "validate_report")
+
+
+def verdict(kind: str = "accepted", comment: str = "Реальный шаг.") -> ValidationResult:
+    return ValidationResult(verdict=kind, reason=f"Причина: {kind}", comment=comment)  # type: ignore[arg-type]

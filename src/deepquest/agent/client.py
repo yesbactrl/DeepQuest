@@ -4,6 +4,7 @@
 (`AgentCallLog`) отдаёт наружу — сохраняет его сервисный слой.
 """
 
+import base64
 import hashlib
 import json
 import logging
@@ -16,7 +17,15 @@ from typing import Any, Protocol
 import anthropic
 from pydantic import BaseModel, ValidationError
 
-from deepquest.agent.schemas import CurrentTask, GoalContext, PlanResult, TaskDraft, TasksResult
+from deepquest.agent.schemas import (
+    CurrentTask,
+    GoalContext,
+    PlanResult,
+    ReportContext,
+    TaskDraft,
+    TasksResult,
+    ValidationResult,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -83,18 +92,37 @@ class TaskAgent(Protocol):
         goals: Sequence[GoalContext],
     ) -> AgentResult[TaskDraft]: ...
 
+    async def validate_report(self, report: ReportContext) -> AgentResult[ValidationResult]: ...
+
+
+# Отказ модели по политике безопасности сервер повторяет на подходящей модели сам.
+# У Haiku такого fallback нет (отказ останется отказом) — для неё есть свой повтор на Opus.
+SERVER_FALLBACK_BETA = "server-side-fallback-2026-07-01"
+
 
 @dataclass(frozen=True)
 class AgentConfig:
     plan_model: str = "claude-haiku-5-5"
-    # У Haiku нет серверного fallback при отказе, поэтому повторяем запрос на Opus сами.
     fallback_model: str = "claude-opus-5-5"
     plan_effort: str = "medium"
+    validate_model: str = "claude-opus-5-5"
+    validate_effort: str = "medium"
     max_tokens: int = 16000
+
+
+@dataclass(frozen=True)
+class _Route:
+    prompt: Prompt
+    models: tuple[str, ...]
+    effort: str
 
 
 def _block(tag: str, text: str) -> str:
     return f"<{tag}>\n{text.strip()}\n</{tag}>"
+
+
+def _as_json(value: object) -> str:
+    return json.dumps(asdict(value), ensure_ascii=False, indent=2)  # type: ignore[call-overload]
 
 
 def render_goals(goals: Sequence[GoalContext]) -> str:
@@ -110,13 +138,51 @@ def render_goals(goals: Sequence[GoalContext]) -> str:
     return _block("goals", "\n".join(lines))
 
 
+def render_report(report: ReportContext) -> str:
+    parts = []
+    if report.goal:
+        parts.append(_block("goal", f"«{report.goal}». Зачем: {report.goal_why or 'не указано'}"))
+    parts.append(_block("task", _as_json(report.task)))
+
+    work = [
+        f"Фактическое время по таймеру: {report.actual_min} мин "
+        f"(оценка: {report.task.estimate_min or '—'} мин)."
+    ]
+    if report.images:
+        work.append(f"Скриншоты: {len(report.images)}, приложены к сообщению.")
+    if report.links:
+        work.append("Ссылки: " + ", ".join(report.links))
+    if report.other_files:
+        work.append(f"Файлы, которые ты не видишь: {report.other_files}.")
+    if report.honor_mode:
+        work.append("Пруфа нет: режим «на честном слове».")
+    parts.append(_block("work", "\n".join(work)))
+    parts.append(_block("report", report.report_text or "(текста нет)"))
+
+    if report.dispute is not None:
+        parts.append(
+            _block("previous_verdict", f"{report.previous_verdict}: {report.previous_reason}")
+        )
+        parts.append(_block("dispute", report.dispute))
+        parts.append(
+            "Пользователь оспаривает прошлый вердикт. Перепроверь отчёт с учётом аргумента."
+        )
+    else:
+        parts.append("Вынеси вердикт по отчёту.")
+    return "\n\n".join(parts)
+
+
 class ClaudeAgent:
     def __init__(
         self, client: anthropic.AsyncAnthropic | None, config: AgentConfig | None = None
     ) -> None:
         self._client = client
-        self._config = config or AgentConfig()
-        self._plan_prompt = Prompt.load("plan_task")
+        self._config = config = config or AgentConfig()
+        plan_models = dict.fromkeys((config.plan_model, config.fallback_model))
+        self._plan = _Route(Prompt.load("plan_task"), tuple(plan_models), config.plan_effort)
+        self._validate = _Route(
+            Prompt.load("validate_report"), (config.validate_model,), config.validate_effort
+        )
 
     async def plan_task(self, text: str, goals: Sequence[GoalContext]) -> AgentResult[PlanResult]:
         content = "\n\n".join(
@@ -126,7 +192,7 @@ class ClaudeAgent:
                 "Оформи задачи из сообщения или задай один уточняющий вопрос.",
             ]
         )
-        return await self._run("plan_task", content, PlanResult)
+        return await self._run("plan_task", self._plan, content, PlanResult)
 
     async def answer_clarification(
         self, text: str, question: str, answer: str, goals: Sequence[GoalContext]
@@ -141,7 +207,7 @@ class ClaudeAgent:
                 "оформи задачи с лучшей формулировкой, какую можешь дать.",
             ]
         )
-        return await self._run("plan_task_answer", content, TasksResult)
+        return await self._run("plan_task_answer", self._plan, content, TasksResult)
 
     async def revise_task(
         self,
@@ -153,7 +219,7 @@ class ClaudeAgent:
         parts = [
             render_goals(goals),
             _block("message", text),
-            _block("current_task", json.dumps(asdict(current), ensure_ascii=False, indent=2)),
+            _block("current_task", _as_json(current)),
         ]
         if correction:
             parts += [
@@ -163,25 +229,46 @@ class ClaudeAgent:
             ]
         else:
             parts.append("Оформи эту задачу заново: одну задачу, без вопросов.")
-        return await self._run("plan_task_revise", "\n\n".join(parts), TaskDraft)
+        return await self._run("plan_task_revise", self._plan, "\n\n".join(parts), TaskDraft)
 
-    def _models(self) -> list[str]:
-        models = [self._config.plan_model]
-        if self._config.fallback_model not in models:
-            models.append(self._config.fallback_model)
-        return models
+    async def validate_report(self, report: ReportContext) -> AgentResult[ValidationResult]:
+        text = render_report(report)
+        # Картинки идут перед текстом: так модель лучше их учитывает.
+        content: list[dict[str, Any]] = [
+            {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": image.media_type,
+                    "data": base64.standard_b64encode(image.data).decode(),
+                },
+            }
+            for image in report.images
+        ]
+        content.append({"type": "text", "text": text})
+        return await self._run(
+            "validate_report",
+            self._validate,
+            content,
+            ValidationResult,
+            log_input={"input": text, "images": len(report.images)},
+        )
 
     async def _run[T: BaseModel](
-        self, kind: str, content: str, output_model: type[T]
+        self,
+        kind: str,
+        route: _Route,
+        content: str | list[dict[str, Any]],
+        output_model: type[T],
+        log_input: dict[str, Any] | None = None,
     ) -> AgentResult[T]:
-        prompt = self._plan_prompt
         calls: list[AgentCallLog] = []
-        for model in self._models():
+        for model in route.models:
             log = AgentCallLog(
                 kind=kind,
-                prompt_version=prompt.version,
+                prompt_version=route.prompt.version,
                 model=model,
-                request={"effort": self._config.plan_effort, "input": content},
+                request={"effort": route.effort, **(log_input or {"input": content})},
             )
             calls.append(log)
             if self._client is None:
@@ -190,18 +277,20 @@ class ClaudeAgent:
 
             started = time.monotonic()
             try:
-                response = await self._client.messages.create(
+                response = await self._client.beta.messages.create(
                     model=model,
                     max_tokens=self._config.max_tokens,
-                    system=prompt.text,
-                    messages=[{"role": "user", "content": content}],
+                    system=route.prompt.text,
+                    messages=[{"role": "user", "content": content}],  # type: ignore[typeddict-item]
                     output_config={
-                        "effort": self._config.plan_effort,
+                        "effort": route.effort,  # type: ignore[typeddict-item]
                         "format": {
                             "type": "json_schema",
                             "schema": anthropic.transform_schema(output_model),
                         },
                     },
+                    fallbacks="default",
+                    betas=[SERVER_FALLBACK_BETA],
                 )
             except anthropic.APIStatusError as exc:
                 log.latency_ms = round((time.monotonic() - started) * 1000)
@@ -223,12 +312,13 @@ class ClaudeAgent:
             log.stop_reason = response.stop_reason
             log.tokens_in = response.usage.input_tokens
             log.tokens_out = response.usage.output_tokens
-            log.response = {"id": response.id, "text": text}
+            # Если сработал серверный fallback, ответила другая модель — она в response.model.
+            log.response = {"id": response.id, "model": response.model, "text": text}
 
             if response.stop_reason == "refusal":
                 category = response.stop_details.category if response.stop_details else None
                 log.error = f"refusal: {category}"
-                logger.warning("Model %s refused %s (%s), trying next model", model, kind, category)
+                logger.warning("Model %s refused %s (%s)", model, kind, category)
                 continue
             if response.stop_reason == "max_tokens":
                 log.error = "Output hit max_tokens"

@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from deepquest.agent.client import TaskAgent
 from deepquest.bot import texts
 from deepquest.bot.middlewares import DbSessionMiddleware, UserMiddleware, WhitelistMiddleware
-from deepquest.bot.routers import common, goals, onboarding, tasks
+from deepquest.bot.routers import common, goals, onboarding, tasks, work
 from deepquest.bot.storage import SqlStorage
 
 
@@ -33,6 +33,7 @@ def build_dispatcher(
     dispatcher.include_routers(
         onboarding.create_router(),
         goals.create_router(),
+        work.create_router(),
         tasks.create_router(),
         common.create_router(),
     )
