@@ -9,6 +9,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from pydantic import ValidationError
 
+from deepquest.agent.setup import create_agent, create_claude_client
 from deepquest.bot.setup import bot_commands, build_dispatcher
 from deepquest.config import Settings
 from deepquest.db.migrate import upgrade_database
@@ -23,11 +24,15 @@ async def run(settings: Settings) -> None:
         settings.bot_token.get_secret_value(),
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
-    dispatcher = build_dispatcher(create_sessionmaker(engine), settings.allowed_telegram_ids)
+    claude = create_claude_client(settings)
+    agent = create_agent(settings, claude)
+    dispatcher = build_dispatcher(create_sessionmaker(engine), settings.allowed_telegram_ids, agent)
     try:
         await bot.set_my_commands(bot_commands())
         await dispatcher.start_polling(bot)
     finally:
+        if claude is not None:
+            await claude.close()
         await engine.dispose()
 
 

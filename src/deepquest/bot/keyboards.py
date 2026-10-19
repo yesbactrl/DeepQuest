@@ -12,7 +12,7 @@ from deepquest.bot.texts import (
     format_minutes,
     format_utc_offset,
 )
-from deepquest.db.models import Goal
+from deepquest.db.models import Goal, Task, TaskStatus
 
 # Пояса для быстрого выбора. Остальные пользователь пишет текстом.
 POPULAR_TIMEZONES = {
@@ -179,4 +179,67 @@ def confirm_archive(goal: Goal) -> InlineKeyboardMarkup:
 def skip_why() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text=texts.SKIP_BUTTON, callback_data=GoalCb(action=GoalAction.SKIP_WHY))
+    return builder.as_markup()
+
+
+class TaskAction(StrEnum):
+    SAVE = "save"
+    EDIT = "edit"
+    CANCEL = "cancel"
+    RETRY = "retry"
+    OPEN = "open"
+    REMOVE = "remove"
+    BACKLOG = "backlog"
+
+
+class TaskCb(CallbackData, prefix="task"):
+    action: TaskAction
+    task_id: int = 0
+
+
+def _task_button(builder: InlineKeyboardBuilder, text: str, action: TaskAction, task: Task) -> None:
+    builder.button(text=text, callback_data=TaskCb(action=action, task_id=task.id))
+
+
+def task_card(task: Task) -> InlineKeyboardMarkup | None:
+    """Кнопки карточки зависят от статуса: черновик решаем, задачу из бэклога правим."""
+    builder = InlineKeyboardBuilder()
+    if task.status == TaskStatus.DRAFT:
+        sizes = []
+        if not task.is_estimated:
+            _task_button(builder, texts.RETRY_BUTTON, TaskAction.RETRY, task)
+            sizes.append(1)
+        _task_button(builder, texts.SAVE_BUTTON, TaskAction.SAVE, task)
+        _task_button(builder, texts.EDIT_TASK_BUTTON, TaskAction.EDIT, task)
+        _task_button(builder, texts.CANCEL_TASK_BUTTON, TaskAction.CANCEL, task)
+        builder.adjust(*sizes, 3)
+        return builder.as_markup()
+    if task.status == TaskStatus.OPEN:
+        _task_button(builder, texts.EDIT_TASK_BUTTON, TaskAction.EDIT, task)
+        _task_button(builder, texts.REMOVE_TASK_BUTTON, TaskAction.REMOVE, task)
+        builder.button(text=texts.BACKLOG_BUTTON, callback_data=TaskCb(action=TaskAction.BACKLOG))
+        builder.adjust(2, 1)
+        return builder.as_markup()
+    return None
+
+
+def clarifying(task: Task) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    _task_button(builder, texts.CANCEL_TASK_BUTTON, TaskAction.CANCEL, task)
+    return builder.as_markup()
+
+
+def backlog(tasks: list[Task]) -> InlineKeyboardMarkup | None:
+    if not tasks:
+        return None
+    builder = InlineKeyboardBuilder()
+    for number, task in enumerate(tasks[: texts.BACKLOG_LIMIT], start=1):
+        _task_button(builder, str(number), TaskAction.OPEN, task)
+    builder.adjust(5)
+    return builder.as_markup()
+
+
+def back_to_backlog() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text=texts.BACKLOG_BUTTON, callback_data=TaskCb(action=TaskAction.BACKLOG))
     return builder.as_markup()

@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -7,10 +7,21 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 DEFAULT_DATA_DIR = Path.home() / "Library" / "Application Support" / "DeepQuest"
 
 
-class Settings(BaseSettings):
-    """Настройки процесса. Читаются из переменных окружения и файла .env."""
+class AgentSettings(BaseSettings):
+    """Настройки агента. Отдельно от бота, чтобы проверять промпты без токена Telegram."""
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    # Без ключа SDK ищет ANTHROPIC_API_KEY в окружении и профиль `ant auth login`.
+    anthropic_api_key: SecretStr | None = None
+    agent_plan_model: str = "claude-haiku-5-5"
+    agent_fallback_model: str = "claude-opus-5-5"
+    agent_plan_effort: Literal["low", "medium", "high", "xhigh", "max"] = "medium"
+    agent_timeout_s: float = 60.0
+
+
+class Settings(AgentSettings):
+    """Настройки процесса. Читаются из переменных окружения и файла .env."""
 
     bot_token: SecretStr
     # Пустой список включает режим первой настройки: бот отвечает любому

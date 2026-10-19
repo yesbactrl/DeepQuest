@@ -1,4 +1,4 @@
-from collections.abc import AsyncGenerator, AsyncIterator, Collection
+from collections.abc import AsyncGenerator, AsyncIterator, Collection, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -13,6 +13,8 @@ from aiogram.types import CallbackQuery, Chat, InlineKeyboardMarkup, Message, Up
 from aiogram.types import User as TelegramUser
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
+from deepquest.agent.client import AgentCallLog, AgentError, AgentResult
+from deepquest.agent.schemas import CurrentTask, GoalContext, PlanResult, TaskDraft, TasksResult
 from deepquest.bot.setup import build_dispatcher
 from deepquest.db.migrate import upgrade_database
 from deepquest.db.session import create_engine, create_sessionmaker
@@ -43,19 +45,30 @@ class FakeTelegramSession(BaseSession):
     def __init__(self) -> None:
         super().__init__()
         self.requests: list[TelegramMethod[Any]] = []
+        self._next_message_id = 100
+        # id сообщения, которое Telegram присвоил бы каждому SendMessage.
+        self.message_ids: dict[int, int] = {}
 
     async def make_request(
         self, bot: Bot, method: TelegramMethod[Any], timeout: int | None = None
     ) -> Any:
         self.requests.append(method)
         if isinstance(method, SendMessage):
+            self._next_message_id += 1
+            self.message_ids[id(method)] = self._next_message_id
             return Message(
-                message_id=len(self.requests),
+                message_id=self._next_message_id,
                 date=datetime.now(UTC),
                 chat=Chat(id=int(method.chat_id), type="private"),
                 text=method.text,
             )
         return True
+
+    def message_id_of(self, screen: SendMessage | EditMessageText) -> int:
+        if isinstance(screen, EditMessageText):
+            assert screen.message_id is not None
+            return screen.message_id
+        return self.message_ids[id(screen)]
 
     async def stream_content(self, *args: Any, **kwargs: Any) -> AsyncGenerator[bytes]:
         raise NotImplementedError
@@ -69,7 +82,10 @@ class BotHarness:
     """Диспетчер DeepQuest с фейковым Telegram: шлём апдейты, смотрим ответы."""
 
     def __init__(
-        self, sessionmaker: async_sessionmaker[AsyncSession], allowed_ids: Collection[int]
+        self,
+        sessionmaker: async_sessionmaker[AsyncSession],
+        allowed_ids: Collection[int],
+        agent: FakeAgent | None = None,
     ) -> None:
         self.telegram = FakeTelegramSession()
         self.bot = Bot(
@@ -77,7 +93,8 @@ class BotHarness:
             session=self.telegram,
             default=DefaultBotProperties(parse_mode=ParseMode.HTML),
         )
-        self.dispatcher = build_dispatcher(sessionmaker, allowed_ids)
+        self.agent = agent or FakeAgent()
+        self.dispatcher = build_dispatcher(sessionmaker, allowed_ids, self.agent)
         self._update_id = 0
 
     def _next_update_id(self) -> int:
@@ -100,9 +117,9 @@ class BotHarness:
             self.bot, Update(update_id=self._next_update_id(), message=message)
         )
 
-    async def press(self, user_id: int, callback_data: str) -> None:
+    async def press(self, user_id: int, callback_data: str, message_id: int = 1) -> None:
         question = Message(
-            message_id=1,
+            message_id=message_id,
             date=datetime.now(UTC),
             chat=Chat(id=user_id, type="private"),
             text="question",
@@ -131,16 +148,90 @@ class BotHarness:
     def last_text(self) -> str:
         return self.screens[-1].text
 
-    def button(self, label: str) -> str:
-        """callback_data кнопки с этим текстом на последнем экране с клавиатурой."""
+    def find_button(self, label: str, on: str | None = None) -> tuple[str, int]:
+        """callback_data и id сообщения кнопки с этим текстом.
+
+        Ищет на последнем экране с клавиатурой, а с `on` — на последнем экране,
+        в тексте которого есть `on`.
+        """
         for screen in reversed(self.screens):
-            if isinstance(screen.reply_markup, InlineKeyboardMarkup):
-                for row in screen.reply_markup.inline_keyboard:
-                    for button in row:
-                        if label in button.text and button.callback_data:
-                            return button.callback_data
-                raise AssertionError(f"No button {label!r} on the last keyboard")
+            if not isinstance(screen.reply_markup, InlineKeyboardMarkup):
+                continue
+            if on is not None and on not in screen.text:
+                continue
+            for row in screen.reply_markup.inline_keyboard:
+                for button in row:
+                    if label in button.text and button.callback_data:
+                        return button.callback_data, self.telegram.message_id_of(screen)
+            raise AssertionError(f"No button {label!r} on the keyboard")
         raise AssertionError("No keyboard was shown")
 
-    async def tap(self, user_id: int, label: str) -> None:
-        await self.press(user_id, self.button(label))
+    def button(self, label: str, on: str | None = None) -> str:
+        return self.find_button(label, on)[0]
+
+    async def tap(self, user_id: int, label: str, on: str | None = None) -> None:
+        callback_data, message_id = self.find_button(label, on)
+        await self.press(user_id, callback_data, message_id)
+
+
+def draft(
+    title: str,
+    goal_id: int | None = None,
+    minutes: int = 60,
+    mult: float = 1.0,
+    reason: str = "обычная работа",
+) -> TaskDraft:
+    return TaskDraft(
+        title=title,
+        expected_result=f"Сделано: {title}",
+        goal_id=goal_id,
+        estimate_min=minutes,
+        value_mult=mult,  # type: ignore[arg-type]
+        mult_reason=reason,
+    )
+
+
+def agent_down() -> AgentError:
+    log = AgentCallLog(
+        kind="test", prompt_version="test", model="fake", request={}, error="API down"
+    )
+    return AgentError("API down", [log])
+
+
+class FakeAgent:
+    """Агент по сценарию: каждый вызов берёт следующий ответ из очереди (или бросает ошибку)."""
+
+    def __init__(self) -> None:
+        self.plans: list[PlanResult | AgentError] = []
+        self.answers: list[TasksResult | AgentError] = []
+        self.revisions: list[TaskDraft | AgentError] = []
+        self.calls: list[tuple[str, dict[str, Any]]] = []
+
+    @staticmethod
+    def _next[T](queue: list[T | AgentError], kind: str) -> AgentResult[T]:
+        assert queue, f"FakeAgent: no scripted response for {kind}"
+        item = queue.pop(0)
+        if isinstance(item, AgentError):
+            raise item
+        log = AgentCallLog(kind=kind, prompt_version="test", model="fake", request={})
+        return AgentResult(item, [log])
+
+    async def plan_task(self, text: str, goals: Sequence[GoalContext]) -> AgentResult[PlanResult]:
+        self.calls.append(("plan_task", {"text": text, "goals": goals}))
+        return self._next(self.plans, "plan_task")
+
+    async def answer_clarification(
+        self, text: str, question: str, answer: str, goals: Sequence[GoalContext]
+    ) -> AgentResult[TasksResult]:
+        self.calls.append(("answer", {"text": text, "question": question, "answer": answer}))
+        return self._next(self.answers, "plan_task_answer")
+
+    async def revise_task(
+        self,
+        text: str,
+        current: CurrentTask,
+        correction: str | None,
+        goals: Sequence[GoalContext],
+    ) -> AgentResult[TaskDraft]:
+        self.calls.append(("revise", {"text": text, "current": current, "correction": correction}))
+        return self._next(self.revisions, "plan_task_revise")

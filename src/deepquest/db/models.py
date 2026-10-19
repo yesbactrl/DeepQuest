@@ -21,6 +21,16 @@ def utcnow() -> datetime:
     return datetime.now(UTC)
 
 
+def _str_enum(enum_cls: type[StrEnum]) -> Enum:
+    """Enum хранится строкой его значения, без CHECK: новые значения не требуют миграции."""
+    return Enum(
+        enum_cls,
+        native_enum=False,
+        length=16,
+        values_callable=lambda members: [m.value for m in members],
+    )
+
+
 class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
     type_annotation_map = {datetime: UTCDateTime()}
@@ -60,14 +70,7 @@ class Goal(Base):
     title: Mapped[str] = mapped_column(String(80))
     # «Зачем» обязательно у цели и необязательно у направления. Агент оценивает задачи по нему.
     why: Mapped[str | None] = mapped_column(Text)
-    status: Mapped[GoalStatus] = mapped_column(
-        Enum(
-            GoalStatus,
-            native_enum=False,
-            length=16,
-            values_callable=lambda statuses: [s.value for s in statuses],
-        )
-    )
+    status: Mapped[GoalStatus] = mapped_column(_str_enum(GoalStatus))
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     archived_at: Mapped[datetime | None]
 
@@ -86,6 +89,70 @@ class Goal(Base):
     @property
     def active_children(self) -> list[Goal]:
         return [child for child in self.children if child.status == GoalStatus.ACTIVE]
+
+
+class TaskStatus(StrEnum):
+    CLARIFYING = "clarifying"  # агент задал вопрос, ждём ответ
+    DRAFT = "draft"  # карточка ждёт «Сохранить / Поправить / Отмена»
+    OPEN = "open"  # в бэклоге
+    RUNNING = "running"
+    AWAITING_REPORT = "awaiting_report"
+    DONE = "done"
+    REJECTED = "rejected"
+    CANCELLED = "cancelled"
+
+
+class Task(Base):
+    __tablename__ = "tasks"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    goal_id: Mapped[int | None] = mapped_column(
+        ForeignKey("goals.id", ondelete="SET NULL"), index=True
+    )
+    title: Mapped[str] = mapped_column(String(200))
+    expected_result: Mapped[str | None] = mapped_column(Text)
+    # Пусто, пока агент не оценил задачу (например, если API был недоступен).
+    estimate_min: Mapped[int | None]
+    value_mult: Mapped[float | None]
+    mult_reason: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[TaskStatus] = mapped_column(_str_enum(TaskStatus), index=True)
+    # Что пользователь написал на самом деле: агент видит это при каждой правке.
+    source_text: Mapped[str] = mapped_column(Text)
+    clarify_question: Mapped[str | None] = mapped_column(Text)
+    clarify_answer: Mapped[str | None] = mapped_column(Text)
+    # Вызов агента, который дал текущую оценку.
+    agent_call_id: Mapped[int | None] = mapped_column(
+        ForeignKey("agent_calls.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
+
+    goal: Mapped[Goal | None] = relationship(lazy="raise_on_sql")
+
+    @property
+    def is_estimated(self) -> bool:
+        return self.estimate_min is not None and self.value_mult is not None
+
+
+class AgentCall(Base):
+    """Один запрос к Claude: для отладки, объяснения оценок и будущих eval-наборов."""
+
+    __tablename__ = "agent_calls"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(32))
+    prompt_version: Mapped[str] = mapped_column(String(16))
+    model: Mapped[str] = mapped_column(String(64))
+    request: Mapped[dict[str, Any]] = mapped_column(JSON)
+    response: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    stop_reason: Mapped[str | None] = mapped_column(String(32))
+    tokens_in: Mapped[int | None]
+    tokens_out: Mapped[int | None]
+    latency_ms: Mapped[int]
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 
 class FsmRecord(Base):

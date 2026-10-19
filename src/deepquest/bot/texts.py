@@ -4,7 +4,7 @@ from datetime import UTC, datetime, time
 from html import escape
 from zoneinfo import ZoneInfo
 
-from deepquest.db.models import Goal, User
+from deepquest.db.models import Goal, Task, User
 from deepquest.services.goals import MAX_TITLE_LEN, MAX_WHY_LEN
 from deepquest.services.users import MAX_DAILY_NORM_MIN, MIN_DAILY_NORM_MIN
 
@@ -116,12 +116,14 @@ SETTINGS_REDO_BUTTON = "Пройти настройку заново"
 CANCELLED = "Ок, отменил. Настройки можно пройти заново: /settings"
 NOTHING_TO_CANCEL = "Отменять нечего."
 NEED_ONBOARDING = "Давай сначала настроимся: /start"
-TASKS_SOON = "Скоро сюда можно будет просто написать задачу. Пока доступны /goals и /settings."
+ONLY_TEXT = "Пока я понимаю только текст: напиши задачу словами."
+UNKNOWN_COMMAND = "Не знаю такой команды. Есть /backlog, /goals и /settings."
 ANSWER_THE_QUESTION = "Ответь на вопрос выше или напиши /cancel."
 STALE_BUTTON = "Эта кнопка уже не работает."
 
 COMMANDS = {
     "start": "Начать и настроиться",
+    "backlog": "Бэклог задач",
     "goals": "Цели и направления",
     "settings": "Настройки",
     "cancel": "Отменить текущий шаг",
@@ -231,3 +233,93 @@ def confirm_archive(goal: Goal) -> str:
 
 def back_to_goal_button(goal: Goal) -> str:
     return f"← {_shorten(goal.title, 30)}"
+
+
+# Задачи
+
+PLANNING = "⏳ Оформляю задачу…"
+REVISING = "⏳ Обновляю карточку…"
+AGENT_FAILED = (
+    "⚠️ Агент сейчас недоступен, поэтому задача сохранена черновиком без оценки. "
+    "Попробуй оценить её ещё раз чуть позже."
+)
+AGENT_FAILED_REVISE = "⚠️ Не получилось обновить карточку: агент недоступен. Попробуй чуть позже."
+ASK_CORRECTION = "Что поправить? Например: «не 2 часа, а 4» или «это к цели Рилсы»."
+TASK_SAVED = "✓ В бэклоге"
+TASK_CANCELLED = "✗ Отменено"
+TASK_REMOVED = "🗑 Убрано из бэклога"
+TASK_NOT_FOUND = "Задача не найдена: возможно, её уже убрали."
+BACKLOG_EMPTY = "<b>Бэклог</b>\n\nПусто. Напиши мне, что хочешь сделать, — я оформлю задачу."
+NO_GOAL = "не выбрана"
+NO_ESTIMATE = "<i>нет, агент был недоступен</i>"
+
+SAVE_BUTTON = "✅ Сохранить"
+EDIT_TASK_BUTTON = "✏️ Поправить"
+CANCEL_TASK_BUTTON = "✗ Отмена"
+RETRY_BUTTON = "🔄 Оценить ещё раз"
+REMOVE_TASK_BUTTON = "🗑 Убрать"
+BACKLOG_BUTTON = "← Бэклог"
+BACKLOG_LIMIT = 30
+
+
+def plural(n: int, one: str, few: str, many: str) -> str:
+    if n % 10 == 1 and n % 100 != 11:
+        return one
+    if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
+        return few
+    return many
+
+
+def format_mult(value: float) -> str:
+    return f"×{value:g}"
+
+
+def goal_path(goal: Goal) -> str:
+    return f"{goal.parent.title} → {goal.title}" if goal.parent else goal.title
+
+
+def task_card(task: Task, status_line: str | None = None) -> str:
+    lines = [f"📝 <b>{escape(task.title)}</b>", ""]
+    if task.expected_result:
+        lines.append(f"<b>Результат:</b> {escape(task.expected_result)}")
+    goal = escape(goal_path(task.goal)) if task.goal else f"<i>{NO_GOAL}</i>"
+    lines.append(f"<b>Цель:</b> {goal}")
+    if task.estimate_min is not None and task.value_mult is not None:
+        reason = f" — {escape(task.mult_reason)}" if task.mult_reason else ""
+        lines.append(f"<b>Оценка:</b> {format_minutes(task.estimate_min)}")
+        lines.append(f"<b>Множитель:</b> {format_mult(task.value_mult)}{reason}")
+    else:
+        lines.append(f"<b>Оценка:</b> {NO_ESTIMATE}")
+    if status_line:
+        lines += ["", status_line]
+    return "\n".join(lines)
+
+
+def clarify_question(question: str) -> str:
+    return f"❓ {escape(question)}"
+
+
+def task_removed(task: Task) -> str:
+    return f"{TASK_REMOVED}: {escape(task.title)}"
+
+
+def backlog(tasks: list[Task]) -> str:
+    if not tasks:
+        return BACKLOG_EMPTY
+    total = sum(task.estimate_min or 0 for task in tasks)
+    count = f"{len(tasks)} {plural(len(tasks), 'задача', 'задачи', 'задач')}"
+    lines = [f"<b>Бэклог</b> · {count} · ~{format_minutes(total)}", ""]
+    for number, task in enumerate(tasks[:BACKLOG_LIMIT], start=1):
+        meta = []
+        if task.estimate_min is not None:
+            meta.append(format_minutes(task.estimate_min))
+        if task.value_mult is not None:
+            meta.append(format_mult(task.value_mult))
+        if task.goal:
+            meta.append(escape(goal_path(task.goal)))
+        lines.append(f"{number}. {escape(task.title)}")
+        if meta:
+            lines.append(f"    <i>{' · '.join(meta)}</i>")
+    if len(tasks) > BACKLOG_LIMIT:
+        lines += ["", f"…и ещё {len(tasks) - BACKLOG_LIMIT}"]
+    return "\n".join(lines)

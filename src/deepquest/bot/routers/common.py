@@ -18,12 +18,15 @@ async def cmd_cancel(message: Message, state: FSMContext) -> None:
 
 
 async def any_message(message: Message, state: FSMContext, user: User) -> None:
+    # Обычный текст сюда не доходит: его забирает роутер задач или текущий сценарий.
     if await state.get_state() is not None:
         await message.answer(texts.ANSWER_THE_QUESTION)
     elif user.onboarded_at is None:
         await message.answer(texts.NEED_ONBOARDING)
+    elif message.text and message.text.startswith("/"):
+        await message.answer(texts.UNKNOWN_COMMAND)
     else:
-        await message.answer(texts.TASKS_SOON)
+        await message.answer(texts.ONLY_TEXT)
 
 
 async def stale_callback(callback: CallbackQuery) -> None:

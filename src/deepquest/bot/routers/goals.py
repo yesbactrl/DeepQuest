@@ -3,17 +3,17 @@
 from datetime import UTC, datetime
 
 from aiogram import Bot, F, Router
-from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.filters.callback_data import CallbackQueryFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
+from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from deepquest.bot import keyboards, texts
 from deepquest.bot.filters import TEXT_ANSWER
 from deepquest.bot.keyboards import GoalAction, GoalCb
+from deepquest.bot.ui import show_in_place
 from deepquest.db.models import Goal, User
 from deepquest.services import goals
 
@@ -23,21 +23,6 @@ class GoalForm(StatesGroup):
     why = State()  # data: parent_id, title
     rename = State()  # data: goal_id
     edit_why = State()  # data: goal_id
-
-
-async def _show(
-    callback: CallbackQuery, bot: Bot, text: str, reply_markup: InlineKeyboardMarkup
-) -> None:
-    """Перерисовывает сообщение с нажатой кнопкой; если его уже не поправить — шлёт новое."""
-    await callback.answer()
-    if not isinstance(callback.message, Message):
-        await bot.send_message(callback.from_user.id, text, reply_markup=reply_markup)
-        return
-    try:
-        await callback.message.edit_text(text, reply_markup=reply_markup)
-    except TelegramBadRequest as exc:
-        if "message is not modified" not in exc.message:
-            raise
 
 
 async def _send_card(
@@ -74,7 +59,7 @@ async def cmd_goals(message: Message, session: AsyncSession, user: User) -> None
 
 async def show_list(callback: CallbackQuery, bot: Bot, session: AsyncSession, user: User) -> None:
     items = await goals.list_goals(session, user)
-    await _show(callback, bot, texts.goals_list(items), keyboards.goals_list(items))
+    await show_in_place(callback, bot, texts.goals_list(items), keyboards.goals_list(items))
 
 
 async def open_goal(
@@ -82,7 +67,7 @@ async def open_goal(
 ) -> None:
     goal = await _goal_or_alert(callback, session, user, callback_data.goal_id)
     if goal is not None:
-        await _show(callback, bot, texts.goal_card(goal), keyboards.goal_card(goal))
+        await show_in_place(callback, bot, texts.goal_card(goal), keyboards.goal_card(goal))
 
 
 # Создание цели или направления
@@ -257,7 +242,9 @@ async def archive_ask(
 ) -> None:
     goal = await _goal_or_alert(callback, session, user, callback_data.goal_id)
     if goal is not None:
-        await _show(callback, bot, texts.confirm_archive(goal), keyboards.confirm_archive(goal))
+        await show_in_place(
+            callback, bot, texts.confirm_archive(goal), keyboards.confirm_archive(goal)
+        )
 
 
 async def archive_confirmed(
@@ -269,10 +256,10 @@ async def archive_confirmed(
     goals.archive_goal(goal, datetime.now(UTC))
     parent = await goals.get_active_goal(session, user, goal.parent_id) if goal.parent_id else None
     if parent is not None:
-        await _show(callback, bot, texts.goal_card(parent), keyboards.goal_card(parent))
+        await show_in_place(callback, bot, texts.goal_card(parent), keyboards.goal_card(parent))
         return
     items = await goals.list_goals(session, user)
-    await _show(callback, bot, texts.goals_list(items), keyboards.goals_list(items))
+    await show_in_place(callback, bot, texts.goals_list(items), keyboards.goals_list(items))
 
 
 def create_router() -> Router:
