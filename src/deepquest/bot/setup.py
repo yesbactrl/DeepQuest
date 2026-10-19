@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from deepquest.bot import texts
 from deepquest.bot.middlewares import DbSessionMiddleware, UserMiddleware, WhitelistMiddleware
-from deepquest.bot.routers import common, onboarding
+from deepquest.bot.routers import common, goals, onboarding
 from deepquest.bot.storage import SqlStorage
 
 
@@ -26,7 +26,9 @@ def build_dispatcher(
     dispatcher.update.outer_middleware(WhitelistMiddleware(allowed_telegram_ids))
     dispatcher.update.outer_middleware(DbSessionMiddleware(sessionmaker))
     dispatcher.update.outer_middleware(UserMiddleware())
-    dispatcher.include_routers(onboarding.create_router(), common.create_router())
+    dispatcher.include_routers(
+        onboarding.create_router(), goals.create_router(), common.create_router()
+    )
     return dispatcher
 
 

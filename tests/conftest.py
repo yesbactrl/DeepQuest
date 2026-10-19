@@ -8,8 +8,8 @@ from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.base import BaseSession
 from aiogram.enums import ParseMode
-from aiogram.methods import SendMessage, TelegramMethod
-from aiogram.types import CallbackQuery, Chat, Message, Update
+from aiogram.methods import EditMessageText, SendMessage, TelegramMethod
+from aiogram.types import CallbackQuery, Chat, InlineKeyboardMarkup, Message, Update
 from aiogram.types import User as TelegramUser
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
@@ -123,5 +123,24 @@ class BotHarness:
         return [r for r in self.telegram.requests if isinstance(r, SendMessage)]
 
     @property
+    def screens(self) -> list[SendMessage | EditMessageText]:
+        """Всё, что пользователь видит: новые сообщения и перерисованные."""
+        return [r for r in self.telegram.requests if isinstance(r, SendMessage | EditMessageText)]
+
+    @property
     def last_text(self) -> str:
-        return self.sent[-1].text
+        return self.screens[-1].text
+
+    def button(self, label: str) -> str:
+        """callback_data кнопки с этим текстом на последнем экране с клавиатурой."""
+        for screen in reversed(self.screens):
+            if isinstance(screen.reply_markup, InlineKeyboardMarkup):
+                for row in screen.reply_markup.inline_keyboard:
+                    for button in row:
+                        if label in button.text and button.callback_data:
+                            return button.callback_data
+                raise AssertionError(f"No button {label!r} on the last keyboard")
+        raise AssertionError("No keyboard was shown")
+
+    async def tap(self, user_id: int, label: str) -> None:
+        await self.press(user_id, self.button(label))

@@ -1,8 +1,9 @@
 from datetime import UTC, datetime, time
+from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import JSON, BigInteger, MetaData, String
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import JSON, BigInteger, Enum, ForeignKey, MetaData, String, Text
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from deepquest.db.types import UTCDateTime
 
@@ -39,6 +40,52 @@ class User(Base):
     freezes_per_week: Mapped[int]
     onboarded_at: Mapped[datetime | None]
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class GoalStatus(StrEnum):
+    ACTIVE = "active"
+    ARCHIVED = "archived"
+
+
+class Goal(Base):
+    """Цель (`parent_id` пуст) или направление внутри цели. Дерево — ровно два уровня."""
+
+    __tablename__ = "goals"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    parent_id: Mapped[int | None] = mapped_column(
+        ForeignKey("goals.id", ondelete="CASCADE"), index=True
+    )
+    title: Mapped[str] = mapped_column(String(80))
+    # «Зачем» обязательно у цели и необязательно у направления. Агент оценивает задачи по нему.
+    why: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[GoalStatus] = mapped_column(
+        Enum(
+            GoalStatus,
+            native_enum=False,
+            length=16,
+            values_callable=lambda statuses: [s.value for s in statuses],
+        )
+    )
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    archived_at: Mapped[datetime | None]
+
+    # Async-сессия не умеет подгружать связи лениво: всё нужное грузим явно (selectinload).
+    parent: Mapped[Goal | None] = relationship(
+        back_populates="children", remote_side=[id], lazy="raise_on_sql"
+    )
+    children: Mapped[list[Goal]] = relationship(
+        back_populates="parent", order_by=id, lazy="raise_on_sql"
+    )
+
+    @property
+    def is_direction(self) -> bool:
+        return self.parent_id is not None
+
+    @property
+    def active_children(self) -> list[Goal]:
+        return [child for child in self.children if child.status == GoalStatus.ACTIVE]
 
 
 class FsmRecord(Base):

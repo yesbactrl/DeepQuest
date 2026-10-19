@@ -39,7 +39,7 @@ Telegram ⇄ long polling
 | Таблица | Зачем | Ключевые поля |
 | --- | --- | --- |
 | `users` | пользователь и настройки | `telegram_id`, `tz`, `day_boundary_hour`, `daily_norm_min`, `morning_at`, `evening_at`, `freezes_per_week` |
-| `goals` | цели и направления (дерево из двух уровней) | `parent_id`, `title`, `why`, `status` |
+| `goals` | цели и направления (дерево из двух уровней); «зачем» обязательно у цели, у направления — по желанию | `user_id`, `parent_id`, `title`, `why`, `status` (active / archived), `archived_at` |
 | `tasks` | задачи | `goal_id`, `title`, `expected_result`, `estimate_min`, `value_mult`, `mult_reason`, `status`, `planned_for`, `source_text` |
 | `time_entries` | отрезки таймера | `user_id`, `task_id`, `started_at`, `ended_at`, `stop_reason` (manual / switched / watchdog) |
 | `reports` | отчёты и пруфы | `task_id`, `text`, `proofs` (JSON: `file_id` фото, ссылки), `honor_mode` |
@@ -215,7 +215,7 @@ DeepQuest/
 | Шаг | Что делаем | Готово, когда |
 | --- | --- | --- |
 | M0 | каркас: `uv`, конфиг, БД и миграции, бот с whitelist, онбординг через `/start` | бот отвечает только тебе и помнит пояс и норму |
-| M1 | цели: `/goals` — добавить, посмотреть список, «зачем» | заведены 2–4 цели |
+| M1 | цели: `/goals` — список, карточка, «зачем», направления, переименование, архив; после онбординга бот сразу просит первую цель | заведены 2–4 цели |
 | M2 | задачи текстом: `plan_task`, карточка, Сохранить / Поправить / Отмена, уточнение, бэклог | мысль превращается в карточку и попадает в бэклог |
 | M3 | таймер и отчёт: ▶️ / ⏸ / `/done`, отчёт и пруф, `validate_report`, журнал XP, «Почему столько?» | задача закрыта, XP начислен и объяснён |
 | M4 | норма, стрик, заморозки, уровни, закрытие дня | `/stats` показывает правду |

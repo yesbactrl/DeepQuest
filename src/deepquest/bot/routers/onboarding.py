@@ -7,8 +7,10 @@ from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from deepquest.bot import keyboards, texts
+from deepquest.bot.filters import TEXT_ANSWER
 from deepquest.bot.keyboards import ClockCb, NormCb, SettingsCb, TimezoneCb
 from deepquest.bot.parsing import (
     local_timezone_name,
@@ -16,11 +18,9 @@ from deepquest.bot.parsing import (
     parse_duration_minutes,
     resolve_timezone,
 )
+from deepquest.bot.routers.goals import start_goal_creation
 from deepquest.db.models import User
-from deepquest.services import users
-
-# Свободный текст, но не команда: /cancel и прочие должны доходить до своих обработчиков.
-TEXT_ANSWER = F.text & ~F.text.startswith("/")
+from deepquest.services import goals, users
 
 
 class Onboarding(StatesGroup):
@@ -167,7 +167,12 @@ async def morning_typed(message: Message, bot: Bot, state: FSMContext, user: Use
 
 
 async def _apply_evening(
-    bot: Bot, chat_id: int, state: FSMContext, user: User, at: time | None
+    bot: Bot,
+    chat_id: int,
+    state: FSMContext,
+    session: AsyncSession,
+    user: User,
+    at: time | None,
 ) -> None:
     if at is None:
         await _send(bot, chat_id, texts.CLOCK_NOT_UNDERSTOOD)
@@ -184,23 +189,32 @@ async def _apply_evening(
         return
     users.finish_onboarding(user, datetime.now(UTC))
     await state.clear()
-    await _send(
-        bot,
-        chat_id,
-        texts.step_done("Вечер", texts.format_clock(at)),
-        texts.onboarding_finished(user),
-    )
+    finished = (texts.step_done("Вечер", texts.format_clock(at)), texts.onboarding_finished(user))
+    if await goals.count_goals(session, user) > 0:
+        await _send(bot, chat_id, *finished)
+        return
+    # Первый запуск: сразу переходим к целям, без них боту нечего оценивать.
+    await _send(bot, chat_id, *finished, texts.GOALS_AFTER_ONBOARDING)
+    await start_goal_creation(bot, chat_id, state, parent=None)
 
 
 async def evening_picked(
-    callback: CallbackQuery, callback_data: ClockCb, bot: Bot, state: FSMContext, user: User
+    callback: CallbackQuery,
+    callback_data: ClockCb,
+    bot: Bot,
+    state: FSMContext,
+    session: AsyncSession,
+    user: User,
 ) -> None:
     await _close_keyboard(callback)
-    await _apply_evening(bot, callback.from_user.id, state, user, callback_data.to_time())
+    await _apply_evening(bot, callback.from_user.id, state, session, user, callback_data.to_time())
 
 
-async def evening_typed(message: Message, bot: Bot, state: FSMContext, user: User) -> None:
-    await _apply_evening(bot, message.chat.id, state, user, parse_clock_time(message.text or ""))
+async def evening_typed(
+    message: Message, bot: Bot, state: FSMContext, session: AsyncSession, user: User
+) -> None:
+    at = parse_clock_time(message.text or "")
+    await _apply_evening(bot, message.chat.id, state, session, user, at)
 
 
 def create_router() -> Router:

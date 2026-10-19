@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from deepquest.bot import texts
 from deepquest.bot.keyboards import ClockCb, NormCb, SettingsCb, TimezoneCb
-from deepquest.db.models import FsmRecord, User
+from deepquest.db.models import User
 from tests.conftest import BotHarness
 
 ME = 111
@@ -59,7 +59,9 @@ async def test_onboarding_with_buttons_and_text(
     assert texts.ASK_EVENING in harness.last_text
 
     await harness.send(ME, "21:30")
-    assert "Готово" in harness.last_text
+    assert "Готово" in harness.sent[-2].text
+    assert texts.GOALS_AFTER_ONBOARDING in harness.sent[-2].text
+    assert harness.last_text == texts.ASK_GOAL_TITLE
 
     user = await _load_user(sessionmaker)
     assert user.tz == "Europe/Moscow"
@@ -67,9 +69,6 @@ async def test_onboarding_with_buttons_and_text(
     assert user.morning_at == time(8)
     assert user.evening_at == time(21, 30)
     assert user.onboarded_at is not None
-    async with sessionmaker() as session:
-        states = await session.scalars(select(FsmRecord.state))
-        assert all(state is None for state in states)
 
 
 async def test_onboarding_survives_restart(
