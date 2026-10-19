@@ -5,12 +5,23 @@ from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 DEFAULT_DATA_DIR = Path.home() / "Library" / "Application Support" / "DeepQuest"
+DEFAULT_CACHE_DIR = Path.home() / "Library" / "Caches" / "DeepQuest"
 
 
 class AgentSettings(BaseSettings):
     """Настройки агента. Отдельно от бота, чтобы проверять промпты без токена Telegram."""
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    # subscription — через Claude Code по твоей подписке Pro/Max (только для личного бота);
+    # api — платные запросы по ключу ANTHROPIC_API_KEY.
+    agent_backend: Literal["subscription", "api"] = "subscription"
+    # При сбое подписки (например, кончились лимиты) повторить запрос через API. Платно.
+    agent_api_fallback: bool = False
+    # Под launchd PATH короче, чем в терминале: там лучше указать полный путь.
+    claude_code_path: str = "claude"
+    claude_code_timeout_s: float = 120.0
+    agent_workdir: Path = DEFAULT_CACHE_DIR / "agent"
 
     # Без ключа SDK ищет ANTHROPIC_API_KEY в окружении и профиль `ant auth login`.
     anthropic_api_key: SecretStr | None = None

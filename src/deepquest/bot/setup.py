@@ -5,7 +5,7 @@ from aiogram.fsm.storage.memory import SimpleEventIsolation
 from aiogram.types import BotCommand
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from deepquest.agent.client import TaskAgent
+from deepquest.agent.base import TaskAgent
 from deepquest.bot import texts
 from deepquest.bot.middlewares import DbSessionMiddleware, UserMiddleware, WhitelistMiddleware
 from deepquest.bot.routers import common, goals, onboarding, tasks, work

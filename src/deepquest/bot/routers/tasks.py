@@ -9,7 +9,7 @@ from aiogram.types import CallbackQuery, Message
 from aiogram.utils.chat_action import ChatActionSender
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from deepquest.agent.client import TaskAgent
+from deepquest.agent.base import TaskAgent
 from deepquest.bot import keyboards, texts
 from deepquest.bot.filters import TEXT_ANSWER
 from deepquest.bot.keyboards import TaskAction, TaskCb

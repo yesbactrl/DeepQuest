@@ -1,4 +1,4 @@
-"""ClaudeAgent против фейкового клиента Anthropic: разбор ответа, отказы, ошибки."""
+"""ApiAgent против фейкового клиента Anthropic: разбор ответа, отказы, ошибки."""
 
 import base64
 import json
@@ -9,7 +9,8 @@ import httpx2
 import pytest
 from anthropic.types import Message
 
-from deepquest.agent.client import AgentConfig, AgentError, ClaudeAgent, Prompt, render_goals
+from deepquest.agent.api import ApiAgent
+from deepquest.agent.base import AgentConfig, AgentError, Prompt, render_goals
 from deepquest.agent.schemas import CurrentTask, GoalContext, ProofImage, ReportContext
 
 GOALS = [
@@ -82,8 +83,8 @@ class FakeClaude:
         self.beta = FakeBeta(self.messages)
 
 
-def _agent(client: FakeClaude | None) -> ClaudeAgent:
-    return ClaudeAgent(client, AgentConfig())  # type: ignore[arg-type]
+def _agent(client: FakeClaude | None) -> ApiAgent:
+    return ApiAgent(client, AgentConfig())  # type: ignore[arg-type]
 
 
 async def test_plan_task_parses_structured_output() -> None:
@@ -98,7 +99,8 @@ async def test_plan_task_parses_structured_output() -> None:
     assert request["system"] == Prompt.load("plan_task").text
     assert request["output_config"]["effort"] == "medium"
     assert request["output_config"]["format"]["type"] == "json_schema"
-    assert "id=2: направление «Арбитраж трафика»" in request["messages"][0]["content"]
+    [text_block] = request["messages"][0]["content"]
+    assert "id=2: направление «Арбитраж трафика»" in text_block["text"]
     [call] = result.calls
     assert (call.kind, call.tokens_in, call.tokens_out, call.error) == (
         "plan_task",

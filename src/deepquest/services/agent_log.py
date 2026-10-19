@@ -2,7 +2,7 @@ from dataclasses import asdict
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from deepquest.agent.client import AgentCallLog
+from deepquest.agent.base import AgentCallLog
 from deepquest.db.models import AgentCall, User
 
 

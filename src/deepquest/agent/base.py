@@ -1,21 +1,23 @@
-"""Вызовы Claude.
+"""Общая часть агента: промпты, сборка запроса, журнал вызовов, перебор моделей.
 
 Агент не ходит в БД: контекст получает аргументами, а журнал своих вызовов
 (`AgentCallLog`) отдаёт наружу — сохраняет его сервисный слой.
+
+Транспортов два: Claude API (`api.ApiAgent`) и Claude Code по подписке
+(`subscription.SubscriptionAgent`). Они отличаются только методом `_call`.
 """
 
 import base64
 import hashlib
 import json
 import logging
-import time
+from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
-import anthropic
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
 from deepquest.agent.schemas import (
     CurrentTask,
@@ -41,6 +43,10 @@ class Prompt:
     def version(self) -> str:
         """Хэш текста: версия меняется сама при любой правке промпта."""
         return hashlib.sha256(self.text.encode()).hexdigest()[:8]
+
+    @property
+    def path(self) -> Path:
+        return PROMPTS_DIR / f"{self.name}.md"
 
     @classmethod
     def load(cls, name: str) -> Prompt:
@@ -68,7 +74,7 @@ class AgentResult[T]:
 
 
 class AgentError(Exception):
-    """Агент не дал ответа: API недоступен, модель отказалась или вернула мусор."""
+    """Агент не дал ответа: недоступен, модель отказалась или вернула мусор."""
 
     def __init__(self, reason: str, calls: list[AgentCallLog]) -> None:
         super().__init__(reason)
@@ -95,14 +101,10 @@ class TaskAgent(Protocol):
     async def validate_report(self, report: ReportContext) -> AgentResult[ValidationResult]: ...
 
 
-# Отказ модели по политике безопасности сервер повторяет на подходящей модели сам.
-# У Haiku такого fallback нет (отказ останется отказом) — для неё есть свой повтор на Opus.
-SERVER_FALLBACK_BETA = "server-side-fallback-2026-07-01"
-
-
 @dataclass(frozen=True)
 class AgentConfig:
     plan_model: str = "claude-haiku-5-5"
+    # Если модель отказалась отвечать, пробуем следующую.
     fallback_model: str = "claude-opus-5-5"
     plan_effort: str = "medium"
     validate_model: str = "claude-opus-5-5"
@@ -111,10 +113,20 @@ class AgentConfig:
 
 
 @dataclass(frozen=True)
-class _Route:
+class Route:
+    """Какой промпт, какие модели по очереди и с каким effort."""
+
     prompt: Prompt
     models: tuple[str, ...]
     effort: str
+
+
+class ModelRefused(Exception):
+    """Модель отказалась отвечать: можно попробовать следующую из маршрута."""
+
+
+class CallFailed(Exception):
+    """Вызов не удался: следующая модель не поможет."""
 
 
 def _block(tag: str, text: str) -> str:
@@ -172,15 +184,14 @@ def render_report(report: ReportContext) -> str:
     return "\n\n".join(parts)
 
 
-class ClaudeAgent:
-    def __init__(
-        self, client: anthropic.AsyncAnthropic | None, config: AgentConfig | None = None
-    ) -> None:
-        self._client = client
+class PromptedAgent(ABC):
+    """Собирает запросы из промптов и контекста; как их доставить — решает `_call`."""
+
+    def __init__(self, config: AgentConfig | None = None) -> None:
         self._config = config = config or AgentConfig()
         plan_models = dict.fromkeys((config.plan_model, config.fallback_model))
-        self._plan = _Route(Prompt.load("plan_task"), tuple(plan_models), config.plan_effort)
-        self._validate = _Route(
+        self._plan = Route(Prompt.load("plan_task"), tuple(plan_models), config.plan_effort)
+        self._validate = Route(
             Prompt.load("validate_report"), (config.validate_model,), config.validate_effort
         )
 
@@ -192,7 +203,7 @@ class ClaudeAgent:
                 "Оформи задачи из сообщения или задай один уточняющий вопрос.",
             ]
         )
-        return await self._run("plan_task", self._plan, content, PlanResult)
+        return await self._run("plan_task", self._plan, content, [], PlanResult)
 
     async def answer_clarification(
         self, text: str, question: str, answer: str, goals: Sequence[GoalContext]
@@ -207,7 +218,7 @@ class ClaudeAgent:
                 "оформи задачи с лучшей формулировкой, какую можешь дать.",
             ]
         )
-        return await self._run("plan_task_answer", self._plan, content, TasksResult)
+        return await self._run("plan_task_answer", self._plan, content, [], TasksResult)
 
     async def revise_task(
         self,
@@ -229,12 +240,11 @@ class ClaudeAgent:
             ]
         else:
             parts.append("Оформи эту задачу заново: одну задачу, без вопросов.")
-        return await self._run("plan_task_revise", self._plan, "\n\n".join(parts), TaskDraft)
+        return await self._run("plan_task_revise", self._plan, "\n\n".join(parts), [], TaskDraft)
 
     async def validate_report(self, report: ReportContext) -> AgentResult[ValidationResult]:
-        text = render_report(report)
         # Картинки идут перед текстом: так модель лучше их учитывает.
-        content: list[dict[str, Any]] = [
+        images = [
             {
                 "type": "image",
                 "source": {
@@ -245,89 +255,89 @@ class ClaudeAgent:
             }
             for image in report.images
         ]
-        content.append({"type": "text", "text": text})
         return await self._run(
-            "validate_report",
-            self._validate,
-            content,
-            ValidationResult,
-            log_input={"input": text, "images": len(report.images)},
+            "validate_report", self._validate, render_report(report), images, ValidationResult
         )
 
     async def _run[T: BaseModel](
         self,
         kind: str,
-        route: _Route,
-        content: str | list[dict[str, Any]],
+        route: Route,
+        text: str,
+        images: list[dict[str, Any]],
         output_model: type[T],
-        log_input: dict[str, Any] | None = None,
     ) -> AgentResult[T]:
+        content = [*images, {"type": "text", "text": text}]
         calls: list[AgentCallLog] = []
         for model in route.models:
             log = AgentCallLog(
                 kind=kind,
                 prompt_version=route.prompt.version,
                 model=model,
-                request={"effort": route.effort, **(log_input or {"input": content})},
+                # Картинки в журнал не пишем, только их число.
+                request={"effort": route.effort, "input": text, "images": len(images)},
             )
             calls.append(log)
-            if self._client is None:
-                log.error = "Claude API client is not configured"
-                raise AgentError(log.error, calls)
-
-            started = time.monotonic()
             try:
-                response = await self._client.beta.messages.create(
-                    model=model,
-                    max_tokens=self._config.max_tokens,
-                    system=route.prompt.text,
-                    messages=[{"role": "user", "content": content}],  # type: ignore[typeddict-item]
-                    output_config={
-                        "effort": route.effort,  # type: ignore[typeddict-item]
-                        "format": {
-                            "type": "json_schema",
-                            "schema": anthropic.transform_schema(output_model),
-                        },
-                    },
-                    fallbacks="default",
-                    betas=[SERVER_FALLBACK_BETA],
-                )
-            except anthropic.APIStatusError as exc:
-                log.latency_ms = round((time.monotonic() - started) * 1000)
-                log.error = f"HTTP {exc.status_code}: {exc.message}"
-                raise AgentError(log.error, calls) from exc
-            except anthropic.APIConnectionError as exc:
-                log.latency_ms = round((time.monotonic() - started) * 1000)
-                log.error = f"{type(exc).__name__}: {exc}"
-                raise AgentError(log.error, calls) from exc
-            except anthropic.AnthropicError as exc:
-                # Например, не найдено ни ключа, ни профиля: клиент создаётся и без них,
-                # а падает только на запросе.
-                log.error = f"{type(exc).__name__}: {exc}"
-                raise AgentError(log.error, calls) from exc
-
-            log.latency_ms = round((time.monotonic() - started) * 1000)
-            # Ответ может начинаться с блоков thinking: берём только текст.
-            text = "".join(block.text for block in response.content if block.type == "text")
-            log.stop_reason = response.stop_reason
-            log.tokens_in = response.usage.input_tokens
-            log.tokens_out = response.usage.output_tokens
-            # Если сработал серверный fallback, ответила другая модель — она в response.model.
-            log.response = {"id": response.id, "model": response.model, "text": text}
-
-            if response.stop_reason == "refusal":
-                category = response.stop_details.category if response.stop_details else None
-                log.error = f"refusal: {category}"
-                logger.warning("Model %s refused %s (%s)", model, kind, category)
+                output = await self._call(route, model, content, output_model, log)
+            except ModelRefused:
+                logger.warning("Model %s refused %s: %s", model, kind, log.error)
                 continue
-            if response.stop_reason == "max_tokens":
-                log.error = "Output hit max_tokens"
-                raise AgentError(log.error, calls)
-            try:
-                output = output_model.model_validate_json(text)
-            except ValidationError as exc:
-                log.error = f"Invalid output: {exc}"
-                raise AgentError(log.error, calls) from exc
+            except CallFailed as exc:
+                raise AgentError(log.error or str(exc), calls) from exc
             return AgentResult(output, calls)
-
         raise AgentError("Every model refused", calls)
+
+    @abstractmethod
+    async def _call[T: BaseModel](
+        self,
+        route: Route,
+        model: str,
+        content: list[dict[str, Any]],
+        output_model: type[T],
+        log: AgentCallLog,
+    ) -> T:
+        """Один запрос к модели. Заполняет `log`; бросает ModelRefused или CallFailed."""
+
+
+class FallbackAgent:
+    """Сначала основной агент, при сбое — запасной. Журнал вызовов общий."""
+
+    def __init__(self, primary: TaskAgent, secondary: TaskAgent) -> None:
+        self._primary = primary
+        self._secondary = secondary
+
+    async def _either[T](self, method: str, *args: Any) -> AgentResult[T]:
+        try:
+            return await getattr(self._primary, method)(*args)
+        except AgentError as primary_error:
+            logger.warning(
+                "Primary agent failed on %s (%s), trying fallback", method, primary_error
+            )
+            try:
+                result: AgentResult[T] = await getattr(self._secondary, method)(*args)
+            except AgentError as secondary_error:
+                raise AgentError(
+                    str(secondary_error), primary_error.calls + secondary_error.calls
+                ) from secondary_error
+            return AgentResult(result.output, primary_error.calls + result.calls)
+
+    async def plan_task(self, text: str, goals: Sequence[GoalContext]) -> AgentResult[PlanResult]:
+        return await self._either("plan_task", text, goals)
+
+    async def answer_clarification(
+        self, text: str, question: str, answer: str, goals: Sequence[GoalContext]
+    ) -> AgentResult[TasksResult]:
+        return await self._either("answer_clarification", text, question, answer, goals)
+
+    async def revise_task(
+        self,
+        text: str,
+        current: CurrentTask,
+        correction: str | None,
+        goals: Sequence[GoalContext],
+    ) -> AgentResult[TaskDraft]:
+        return await self._either("revise_task", text, current, correction, goals)
+
+    async def validate_report(self, report: ReportContext) -> AgentResult[ValidationResult]:
+        return await self._either("validate_report", report)

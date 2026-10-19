@@ -21,7 +21,7 @@ from aiogram.types import (
 from aiogram.types import User as TelegramUser
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from deepquest.agent.client import AgentCallLog, AgentError, AgentResult
+from deepquest.agent.base import AgentCallLog, AgentError, AgentResult
 from deepquest.agent.schemas import (
     CurrentTask,
     GoalContext,

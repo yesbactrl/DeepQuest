@@ -11,7 +11,7 @@ Telegram-бот для личной прокачки: цели, задачи, т
 Нужен [uv](https://docs.astral.sh/uv/).
 
 1. Создай бота в [@BotFather](https://t.me/BotFather) и получи токен.
-2. Скопируй настройки и впиши токен в `BOT_TOKEN`, а ключ Claude API — в `ANTHROPIC_API_KEY` (без ключа задачи сохраняются без оценки):
+2. Агент по умолчанию работает через Claude Code по твоей подписке: нужен установленный `claude`, в который ты вошёл (`claude auth status`). Скопируй настройки и впиши токен в `BOT_TOKEN`. Ключ Claude API (`ANTHROPIC_API_KEY`) нужен только для `AGENT_BACKEND=api` или как запасной вариант:
 
    ```bash
    cp .env.example .env
@@ -41,7 +41,7 @@ uv run pytest
 uv run ruff check . && uv run ruff format --check .
 ```
 
-Проверить промпт оформления задач на настоящем API, без Telegram (нужен `ANTHROPIC_API_KEY`; цели демонстрационные):
+Проверить промпт оформления задач на настоящей модели, без Telegram (бэкенд — как у бота; цели демонстрационные):
 
 ```bash
 uv run python -m deepquest.agent "надо бы глянуть, как люди льют на тиктоке, и запустить кампанию баксов на двадцать"

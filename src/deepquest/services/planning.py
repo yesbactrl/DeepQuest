@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from deepquest.agent.client import AgentError, TaskAgent
+from deepquest.agent.base import AgentError, TaskAgent
 from deepquest.agent.schemas import GoalContext, TaskDraft
 from deepquest.db.models import Task, TaskStatus, User
 from deepquest.services import goals, tasks

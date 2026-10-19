@@ -12,7 +12,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from deepquest.agent.client import AgentError, TaskAgent
+from deepquest.agent.base import AgentError, TaskAgent
 from deepquest.agent.schemas import ProofImage, ReportContext
 from deepquest.db.models import Report, Task, TaskStatus, User, Validation, ValidationVerdict
 from deepquest.services import tasks, timer, xp
