@@ -1,39 +1,186 @@
-import { Badge, Group, Paper, Skeleton, Stack, Text, UnstyledButton } from "@mantine/core";
+import {
+  ActionIcon,
+  Badge,
+  Button,
+  Group,
+  Paper,
+  Skeleton,
+  Stack,
+  Text,
+  Tooltip,
+  UnstyledButton,
+} from "@mantine/core";
+import { notifications } from "@mantine/notifications";
+import { IconCheck, IconPlayerPause, IconPlayerPlay, type Icon } from "@tabler/icons-react";
 
-import type { Task } from "../../api/tasks";
+import { type Task, useStart, useTaskAction } from "../../api/tasks";
 import { formatMinutes } from "../../lib/format";
 import { STATUS, formatMult } from "../../lib/tasks";
+
+const showError = (error: Error) => notifications.show({ color: "red", message: error.message });
 
 function meta(task: Task): string {
   const parts = [];
   if (task.goal_path) parts.push(task.goal_path);
-  if (task.estimate_min !== null) parts.push(`оценка ${formatMinutes(task.estimate_min)}`);
   if (task.value_mult !== null) parts.push(formatMult(task.value_mult));
   if (task.spent_min) parts.push(`потрачено ${formatMinutes(task.spent_min)}`);
   if (task.xp) parts.push(`${task.xp} XP`);
   return parts.join(" · ");
 }
 
-function Row({ task, onOpen }: { task: Task; onOpen: (id: number) => void }) {
+// Оценка крупно в квадратике слева: сколько времени займёт задача, видно сразу.
+function estimateParts(minutes: number | null): [string, string] {
+  if (minutes === null) return ["?", "без оценки"];
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (!hours) return [String(rest), "мин"];
+  if (!rest) return [String(hours), "ч"];
+  return [`${hours}:${String(rest).padStart(2, "0")}`, "ч"];
+}
+
+function EstimateTile({ minutes }: { minutes: number | null }) {
+  const [value, unit] = estimateParts(minutes);
+  return (
+    <Paper
+      w={56}
+      h={56}
+      radius="md"
+      bg="var(--mantine-color-default-hover)"
+      style={{ flexShrink: 0, display: "grid", placeItems: "center", alignContent: "center" }}
+      aria-label={minutes === null ? "Без оценки" : `Оценка ${formatMinutes(minutes)}`}
+    >
+      <Text fw={700} size="lg" lh={1.1}>
+        {value}
+      </Text>
+      <Text size="xs" c="dimmed" lh={1.1}>
+        {unit}
+      </Text>
+    </Paper>
+  );
+}
+
+// На широком экране — кнопка с подписью, на узком — только иконка.
+function RowButton({
+  label,
+  icon: IconComponent,
+  onClick,
+  loading,
+  disabled,
+  variant,
+  color,
+}: {
+  label: string;
+  icon: Icon;
+  onClick: () => void;
+  loading: boolean;
+  disabled?: boolean;
+  variant: "filled" | "light" | "default";
+  color?: string;
+}) {
+  return (
+    <>
+      <Button
+        visibleFrom="sm"
+        size="xs"
+        variant={variant}
+        color={color}
+        leftSection={<IconComponent size={14} />}
+        loading={loading}
+        disabled={disabled}
+        onClick={onClick}
+      >
+        {label}
+      </Button>
+      <Tooltip label={label}>
+        <ActionIcon
+          hiddenFrom="sm"
+          size="lg"
+          variant={variant}
+          color={color}
+          aria-label={label}
+          loading={loading}
+          disabled={disabled}
+          onClick={onClick}
+        >
+          <IconComponent size={16} />
+        </ActionIcon>
+      </Tooltip>
+    </>
+  );
+}
+
+function Actions({ task, onOpen }: { task: Task; onOpen: (id: number) => void }) {
+  const start = useStart(task.id);
+  const action = useTaskAction(task.id);
+  const busy = (name: "pause" | "done") => action.isPending && action.variables === name;
+  // После «Готово» сразу открываем карточку: там форма отчёта.
+  const done = () => action.mutate("done", { onSuccess: () => onOpen(task.id), onError: showError });
+  const doneButton = (
+    <RowButton label="Готово" icon={IconCheck} variant="light" color="teal" loading={busy("done")} onClick={done} />
+  );
+
+  if (task.status === "open") {
+    return (
+      <Group gap={6} wrap="nowrap">
+        <RowButton
+          label={task.spent_min ? "Продолжить" : "Старт"}
+          icon={IconPlayerPlay}
+          variant="filled"
+          loading={start.isPending}
+          disabled={task.estimate_min === null}
+          onClick={() =>
+            start.mutate(undefined, {
+              onSuccess: (result) =>
+                result.paused_task_id &&
+                notifications.show({ message: "Предыдущая задача встала на паузу", color: "gray" }),
+              onError: showError,
+            })
+          }
+        />
+        {doneButton}
+      </Group>
+    );
+  }
+  if (task.status === "running") {
+    return (
+      <Group gap={6} wrap="nowrap">
+        <RowButton
+          label="Пауза"
+          icon={IconPlayerPause}
+          variant="default"
+          loading={busy("pause")}
+          onClick={() => action.mutate("pause", { onError: showError })}
+        />
+        {doneButton}
+      </Group>
+    );
+  }
   const status = STATUS[task.status];
   return (
-    <UnstyledButton onClick={() => onOpen(task.id)} style={{ display: "block" }}>
-      <Paper withBorder p="sm" className="task-row">
-        <Group justify="space-between" wrap="nowrap" align="flex-start">
-          <Stack gap={2} style={{ minWidth: 0 }}>
+    <Badge color={status.color} variant="light" style={{ flexShrink: 0 }}>
+      {status.label}
+    </Badge>
+  );
+}
+
+function Row({ task, onOpen }: { task: Task; onOpen: (id: number) => void }) {
+  return (
+    <Paper withBorder p="sm" className="task-row">
+      <Group wrap="nowrap" gap="sm">
+        <EstimateTile minutes={task.estimate_min} />
+        <UnstyledButton onClick={() => onOpen(task.id)} style={{ flex: 1, minWidth: 0 }}>
+          <Stack gap={2}>
             <Text fw={500} truncate>
               {task.title}
             </Text>
             <Text size="xs" c="dimmed" truncate>
-              {meta(task) || "без оценки"}
+              {meta(task) || "без цели"}
             </Text>
           </Stack>
-          <Badge color={status.color} variant="light" style={{ flexShrink: 0 }}>
-            {status.label}
-          </Badge>
-        </Group>
-      </Paper>
-    </UnstyledButton>
+        </UnstyledButton>
+        <Actions task={task} onOpen={onOpen} />
+      </Group>
+    </Paper>
   );
 }
 
@@ -51,9 +198,9 @@ export function TaskList({
   if (loading) {
     return (
       <Stack gap="xs">
-        <Skeleton h={58} />
-        <Skeleton h={58} />
-        <Skeleton h={58} />
+        <Skeleton h={74} />
+        <Skeleton h={74} />
+        <Skeleton h={74} />
       </Stack>
     );
   }
