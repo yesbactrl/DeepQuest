@@ -6,6 +6,8 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 DEFAULT_DATA_DIR = Path.home() / "Library" / "Application Support" / "DeepQuest"
 DEFAULT_CACHE_DIR = Path.home() / "Library" / "Caches" / "DeepQuest"
+# Корень репозитория: src/deepquest/config.py → три уровня вверх.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 class AgentSettings(BaseSettings):
@@ -42,6 +44,12 @@ class Settings(AgentSettings):
     allowed_telegram_ids: Annotated[list[int], NoDecode] = []
     data_dir: Path = DEFAULT_DATA_DIR
     log_level: str = "INFO"
+
+    # Веб открывается только с этого Mac: входа нет, поэтому наружу его не выставляем.
+    web_enabled: bool = True
+    web_host: str = "127.0.0.1"
+    web_port: int = 8484
+    web_dist_dir: Path = PROJECT_ROOT / "web" / "dist"
 
     @field_validator("allowed_telegram_ids", mode="before")
     @classmethod
