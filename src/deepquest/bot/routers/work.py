@@ -15,11 +15,12 @@ from deepquest.agent.base import TaskAgent
 from deepquest.bot import keyboards, texts
 from deepquest.bot.filters import TEXT_ANSWER
 from deepquest.bot.keyboards import TaskAction, TaskCb
-from deepquest.bot.proofs import download_images, extract_report
+from deepquest.bot.proofs import extract_report, telegram_download
 from deepquest.bot.ui import edit_or_send, show_in_place
 from deepquest.db.models import Task, TaskStatus, User
 from deepquest.services import tasks, timer, validation
 from deepquest.services.days import local_time
+from deepquest.services.proofs import ProofStore
 from deepquest.services.timer import TimerError
 from deepquest.services.validation import ReportError, ValidationOutcome
 
@@ -221,6 +222,7 @@ async def report_received(
     session: AsyncSession,
     user: User,
     agent: TaskAgent,
+    proofs: ProofStore,
 ) -> None:
     report = extract_report(message)
     if not report.text and not report.files:
@@ -234,7 +236,7 @@ async def report_received(
         return
     placeholder = await message.answer(texts.CHECKING)
     async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
-        images = await download_images(bot, report.files)
+        images = await proofs.images(report.files, telegram_download(bot))
         outcome = await validation.submit_report(session, agent, user, task, report, images, _now())
     await _show_outcome(bot, message.chat.id, placeholder.message_id, session, outcome)
 
@@ -246,6 +248,7 @@ async def recheck_requested(
     session: AsyncSession,
     user: User,
     agent: TaskAgent,
+    proofs: ProofStore,
 ) -> None:
     task = await _task_or_alert(callback, session, user, callback_data.task_id)
     if task is None:
@@ -256,7 +259,7 @@ async def recheck_requested(
         return
     await show_in_place(callback, bot, texts.CHECKING)
     async with ChatActionSender.typing(bot=bot, chat_id=callback.from_user.id):
-        images = await download_images(bot, report.proofs)
+        images = await proofs.images(report.proofs, telegram_download(bot))
         outcome = await validation.retry(session, agent, user, task, images, _now())
     await _show_outcome(bot, callback.from_user.id, _message_id(callback), session, outcome)
 
@@ -302,6 +305,7 @@ async def dispute_received(
     session: AsyncSession,
     user: User,
     agent: TaskAgent,
+    proofs: ProofStore,
 ) -> None:
     data = await state.get_data()
     await state.clear()
@@ -312,7 +316,7 @@ async def dispute_received(
         return
     placeholder = await message.answer(texts.CHECKING)
     async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
-        images = await download_images(bot, report.proofs)
+        images = await proofs.images(report.proofs, telegram_download(bot))
         try:
             outcome = await validation.dispute(
                 session, agent, user, task, message.text or "", images, _now()

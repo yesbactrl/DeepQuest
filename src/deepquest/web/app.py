@@ -8,8 +8,10 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from deepquest.agent.base import TaskAgent
+from deepquest.services.proofs import ProofStore, TelegramDownload
 from deepquest.web.deps import WebContext
-from deepquest.web.routes import goals, me
+from deepquest.web.routes import goals, me, tasks
 from deepquest.web.security import ALLOWED_HOSTS, CsrfHeaderMiddleware
 
 NOT_BUILT = """<!doctype html><meta charset="utf-8"><title>DeepQuest</title>
@@ -24,6 +26,9 @@ def create_app(
     sessionmaker: async_sessionmaker[AsyncSession],
     owner_telegram_id: int | None,
     dist_dir: Path,
+    agent: TaskAgent,
+    proofs: ProofStore,
+    telegram_download: TelegramDownload | None = None,
 ) -> FastAPI:
     app = FastAPI(
         title="DeepQuest",
@@ -31,13 +36,16 @@ def create_app(
         openapi_url="/api/openapi.json",
         redoc_url=None,
     )
-    app.state.context = WebContext(sessionmaker, owner_telegram_id)
+    app.state.context = WebContext(
+        sessionmaker, owner_telegram_id, agent, proofs, telegram_download
+    )
     app.add_middleware(CsrfHeaderMiddleware)
     # Последним добавленный middleware срабатывает первым: Host проверяем раньше всего.
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
 
     app.include_router(me.router)
     app.include_router(goals.router)
+    app.include_router(tasks.router)
 
     @app.api_route("/api/{path:path}", methods=["GET", "POST", "PATCH", "PUT", "DELETE"])
     async def unknown_api(path: str) -> None:

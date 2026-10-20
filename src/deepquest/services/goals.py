@@ -91,6 +91,19 @@ async def create_goal(
     return goal
 
 
+def goal_path(goal: Goal) -> str:
+    """«Цель → Направление» или просто «Цель». Родитель должен быть подгружен."""
+    return f"{goal.parent.title} → {goal.title}" if goal.parent else goal.title
+
+
+async def active_goal_ids(session: AsyncSession, user: User) -> set[int]:
+    """id всех активных целей и направлений пользователя."""
+    ids = await session.scalars(
+        select(Goal.id).where(Goal.user_id == user.id, Goal.status == GoalStatus.ACTIVE)
+    )
+    return set(ids)
+
+
 def rename_goal(goal: Goal, title: str) -> None:
     goal.title = clean_title(title)
 

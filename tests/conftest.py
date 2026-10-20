@@ -1,3 +1,4 @@
+import tempfile
 from collections.abc import AsyncGenerator, AsyncIterator, Collection, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -34,6 +35,7 @@ from deepquest.agent.schemas import (
 from deepquest.bot.setup import build_dispatcher
 from deepquest.db.migrate import upgrade_database
 from deepquest.db.session import create_engine, create_sessionmaker
+from deepquest.services.proofs import ProofStore
 
 FAKE_FILE_BYTES = b"\x89PNG fake screenshot"
 
@@ -118,7 +120,8 @@ class BotHarness:
             default=DefaultBotProperties(parse_mode=ParseMode.HTML),
         )
         self.agent = agent or FakeAgent()
-        self.dispatcher = build_dispatcher(sessionmaker, allowed_ids, self.agent)
+        self.proofs = ProofStore(Path(tempfile.mkdtemp(prefix="deepquest-proofs-")))
+        self.dispatcher = build_dispatcher(sessionmaker, allowed_ids, self.agent, self.proofs)
         self._update_id = 0
 
     def _next_update_id(self) -> int:

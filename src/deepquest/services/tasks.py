@@ -72,6 +72,26 @@ async def get_task(session: AsyncSession, user: User, task_id: int) -> Task | No
     )
 
 
+async def list_tasks(
+    session: AsyncSession,
+    user: User,
+    statuses: Collection[TaskStatus] | None = None,
+    goal_ids: Collection[int] | None = None,
+) -> list[Task]:
+    """Задачи для веба: свежие сверху, с целью и её родителем."""
+    query = (
+        select(Task)
+        .where(Task.user_id == user.id)
+        .order_by(Task.updated_at.desc(), Task.id.desc())
+        .options(selectinload(Task.goal).selectinload(Goal.parent))
+    )
+    if statuses:
+        query = query.where(Task.status.in_(list(statuses)))
+    if goal_ids:
+        query = query.where(Task.goal_id.in_(list(goal_ids)))
+    return list(await session.scalars(query))
+
+
 async def list_backlog(session: AsyncSession, user: User) -> list[Task]:
     """Задачи в работе: открытые и та, по которой сейчас идёт таймер."""
     tasks = await session.scalars(

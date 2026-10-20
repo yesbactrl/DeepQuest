@@ -102,3 +102,45 @@ async def goal_stats(
             combined.add(totals[direction.id])
         result[goal.id] = finish(goal, combined)
     return result
+
+
+@dataclass(frozen=True)
+class TaskTotals:
+    minutes: int
+    xp: int
+    # Когда запущен идущий отрезок таймера, если он есть.
+    running_since: datetime | None
+
+
+async def task_totals(
+    session: AsyncSession, tasks: list[Task], now: datetime
+) -> dict[int, TaskTotals]:
+    """Минуты по таймеру и XP для набора задач — двумя запросами на весь список."""
+    ids = [task.id for task in tasks]
+    seconds: dict[int, float] = defaultdict(float)
+    running: dict[int, datetime] = {}
+    xp_by_task: dict[int, int] = {}
+    if ids:
+        entries = await session.execute(
+            select(TimeEntry.task_id, TimeEntry.started_at, TimeEntry.ended_at).where(
+                TimeEntry.task_id.in_(ids)
+            )
+        )
+        for task_id, started_at, ended_at in entries:
+            seconds[task_id] += max(((ended_at or now) - started_at).total_seconds(), 0)
+            if ended_at is None:
+                running[task_id] = started_at
+        xp_rows = await session.execute(
+            select(XpEvent.task_id, func.sum(XpEvent.amount))
+            .where(XpEvent.task_id.in_(ids))
+            .group_by(XpEvent.task_id)
+        )
+        xp_by_task = {task_id: amount or 0 for task_id, amount in xp_rows}
+    return {
+        task_id: TaskTotals(
+            minutes=int(seconds[task_id] // 60),
+            xp=xp_by_task.get(task_id, 0),
+            running_since=running.get(task_id),
+        )
+        for task_id in ids
+    }

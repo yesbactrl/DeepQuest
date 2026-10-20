@@ -10,12 +10,14 @@ from deepquest.bot import texts
 from deepquest.bot.middlewares import DbSessionMiddleware, UserMiddleware, WhitelistMiddleware
 from deepquest.bot.routers import common, goals, onboarding, tasks, work
 from deepquest.bot.storage import SqlStorage
+from deepquest.services.proofs import ProofStore
 
 
 def build_dispatcher(
     sessionmaker: async_sessionmaker[AsyncSession],
     allowed_telegram_ids: Collection[int],
     agent: TaskAgent,
+    proofs: ProofStore,
 ) -> Dispatcher:
     dispatcher = Dispatcher(
         storage=SqlStorage(sessionmaker),
@@ -23,8 +25,9 @@ def build_dispatcher(
         # по кнопке не прогонит шаг сценария дважды.
         events_isolation=SimpleEventIsolation(),
     )
-    # Попадает в обработчики аргументом `agent`.
+    # Попадают в обработчики аргументами `agent` и `proofs`.
     dispatcher["agent"] = agent
+    dispatcher["proofs"] = proofs
     dispatcher.update.outer_middleware(WhitelistMiddleware(allowed_telegram_ids))
     dispatcher.update.outer_middleware(DbSessionMiddleware(sessionmaker))
     dispatcher.update.outer_middleware(UserMiddleware())

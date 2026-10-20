@@ -39,8 +39,22 @@ async function errorMessage(response: Response): Promise<string> {
   return `Ошибка сервера: ${response.status} ${response.statusText}`;
 }
 
+// Файлы уходят multipart-формой: Content-Type с границей браузер ставит сам.
+async function upload<T>(path: string, form: FormData): Promise<T> {
+  const response = await fetch(`/api${path}`, {
+    method: "POST",
+    headers: { "X-DeepQuest": "1" },
+    body: form,
+  });
+  if (!response.ok) {
+    throw new ApiError(response.status, await errorMessage(response));
+  }
+  return (await response.json()) as T;
+}
+
 export const api = {
   get: <T>(path: string) => request<T>("GET", path),
   post: <T>(path: string, body?: unknown) => request<T>("POST", path, body ?? {}),
   patch: <T>(path: string, body: unknown) => request<T>("PATCH", path, body),
+  upload,
 };

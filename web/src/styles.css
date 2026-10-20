@@ -1,0 +1,7 @@
+.task-row {
+  transition: border-color 120ms ease;
+}
+
+.task-row:hover {
+  border-color: var(--mantine-primary-color-filled);
+}

@@ -5,7 +5,9 @@ from typing import Annotated
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from deepquest.agent.base import TaskAgent
 from deepquest.db.models import User
+from deepquest.services.proofs import ProofStore, TelegramDownload
 from deepquest.services.users import get_or_create_user
 
 
@@ -14,6 +16,10 @@ class WebContext:
     sessionmaker: async_sessionmaker[AsyncSession]
     # Пользователь у веба один — владелец бота (первый из ALLOWED_TELEGRAM_IDS).
     owner_telegram_id: int | None
+    agent: TaskAgent
+    proofs: ProofStore
+    # Бот в том же процессе: через него веб читает скриншоты, присланные в Telegram.
+    telegram_download: TelegramDownload | None = None
 
 
 def get_context(request: Request) -> WebContext:
@@ -42,3 +48,4 @@ async def get_user(
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 UserDep = Annotated[User, Depends(get_user)]
+ContextDep = Annotated[WebContext, Depends(get_context)]

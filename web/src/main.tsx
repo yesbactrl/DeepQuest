@@ -1,5 +1,6 @@
 import "@mantine/core/styles.css";
 import "@mantine/notifications/styles.css";
+import "./styles.css";
 
 import { MantineProvider } from "@mantine/core";
 import { ModalsProvider } from "@mantine/modals";

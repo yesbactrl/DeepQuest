@@ -18,10 +18,12 @@ from aiogram.enums import ParseMode
 from pydantic import ValidationError
 
 from deepquest.agent.setup import build_agent
+from deepquest.bot.proofs import telegram_download
 from deepquest.bot.setup import bot_commands, build_dispatcher
 from deepquest.config import Settings
 from deepquest.db.migrate import upgrade_database
 from deepquest.db.session import create_engine, create_sessionmaker
+from deepquest.services.proofs import ProofStore
 from deepquest.web.app import create_app
 
 logger = logging.getLogger("deepquest")
@@ -56,7 +58,9 @@ async def run(settings: Settings) -> None:
     )
     agent = build_agent(settings)
     logger.info("Агент: %s", agent.description)
-    dispatcher = build_dispatcher(sessionmaker, settings.allowed_telegram_ids, agent.agent)
+    # Одно хранилище пруфов на бота и веб: отчёт из одного можно перепроверить из другого.
+    proofs = ProofStore(settings.data_dir / "proofs")
+    dispatcher = build_dispatcher(sessionmaker, settings.allowed_telegram_ids, agent.agent, proofs)
 
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
@@ -67,7 +71,14 @@ async def run(settings: Settings) -> None:
     server = None
     if settings.web_enabled:
         owner = settings.allowed_telegram_ids[0] if settings.allowed_telegram_ids else None
-        app = create_app(sessionmaker, owner, settings.web_dist_dir)
+        app = create_app(
+            sessionmaker,
+            owner,
+            settings.web_dist_dir,
+            agent.agent,
+            proofs,
+            telegram_download(bot),
+        )
         server = _WebServer(
             uvicorn.Config(app, host=settings.web_host, port=settings.web_port, log_level="info")
         )

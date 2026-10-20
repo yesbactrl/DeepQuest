@@ -9,10 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from deepquest.db.models import TaskStatus, TimeEntry, ValidationVerdict
 from deepquest.services import goals, tasks, xp
+from deepquest.services.proofs import ProofStore
 from deepquest.services.tasks import TaskFields
 from deepquest.services.users import get_or_create_user
 from deepquest.web.app import create_app
-from tests.conftest import BotHarness
+from tests.conftest import BotHarness, FakeAgent
 
 ME = 111
 WHY = "Не зависеть от зарплаты"
@@ -30,7 +31,7 @@ def dist(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def app(sessionmaker: async_sessionmaker[AsyncSession], dist: Path) -> FastAPI:
-    return create_app(sessionmaker, ME, dist)
+    return create_app(sessionmaker, ME, dist, FakeAgent(), ProofStore(dist.parent / "proofs"))
 
 
 @pytest.fixture
@@ -70,7 +71,7 @@ async def test_changes_need_csrf_header(app: FastAPI) -> None:
 async def test_web_needs_bot_owner(
     sessionmaker: async_sessionmaker[AsyncSession], dist: Path
 ) -> None:
-    app = create_app(sessionmaker, None, dist)
+    app = create_app(sessionmaker, None, dist, FakeAgent(), ProofStore(dist.parent / "proofs"))
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1"
     ) as client:
@@ -201,7 +202,7 @@ async def test_unknown_api_is_404_not_index(client: httpx.AsyncClient) -> None:
 async def test_missing_build_explains_what_to_do(
     sessionmaker: async_sessionmaker[AsyncSession], tmp_path: Path
 ) -> None:
-    app = create_app(sessionmaker, ME, tmp_path / "no-dist")
+    app = create_app(sessionmaker, ME, tmp_path / "no-dist", FakeAgent(), ProofStore(tmp_path))
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1"
     ) as client:

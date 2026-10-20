@@ -19,6 +19,8 @@ import {
 } from "@tabler/icons-react";
 import { NavLink as RouterLink, Outlet, useLocation } from "react-router";
 
+import { TimerWidget } from "./TimerWidget";
+
 const SECTIONS = [
   { to: "/", label: "Дашборд", icon: IconLayoutDashboard },
   { to: "/tasks", label: "Задачи", icon: IconListCheck },
@@ -63,7 +65,10 @@ export function Layout() {
               DeepQuest
             </Text>
           </Group>
-          <ColorSchemeToggle />
+          <Group gap="sm" wrap="nowrap">
+            <TimerWidget />
+            <ColorSchemeToggle />
+          </Group>
         </Group>
       </AppShell.Header>
 
