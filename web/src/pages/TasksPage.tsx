@@ -19,7 +19,9 @@ const EMPTY: Record<string, string> = {
 // Фильтры и открытая задача живут в адресе: ссылку из шапки (таймер) можно открыть сразу.
 export function TasksPage() {
   const [params, setParams] = useSearchParams();
-  const filter = FILTERS.find((f) => f.value === params.get("filter")) ?? FILTERS[0];
+  // По умолчанию — «В работе», хоть она и не первая по порядку.
+  const filter =
+    FILTERS.find((f) => f.value === (params.get("filter") ?? "work")) ?? FILTERS[0];
   const goalId = params.get("goal") ? Number(params.get("goal")) : null;
   const openTaskId = params.get("task") ? Number(params.get("task")) : null;
   const goals = useGoals();

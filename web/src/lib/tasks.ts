@@ -12,10 +12,11 @@ export const STATUS: Record<TaskStatus, { label: string; color: string }> = {
 };
 
 export const FILTERS: { value: string; label: string; statuses: TaskStatus[] }[] = [
+  // Вкладки идут в порядке жизни задачи: черновик → бэклог → работа → готово.
   // В работе — то, что начато: таймер идёт или ждёт отчёта. Сохранённое, но не начатое — в бэклоге.
-  { value: "work", label: "В работе", statuses: ["running", "awaiting_report"] },
-  { value: "backlog", label: "В бэклоге", statuses: ["open"] },
   { value: "drafts", label: "Черновики", statuses: ["draft", "clarifying"] },
+  { value: "backlog", label: "В бэклоге", statuses: ["open"] },
+  { value: "work", label: "В работе", statuses: ["running", "awaiting_report"] },
   { value: "done", label: "Готово", statuses: ["done", "rejected"] },
   {
     value: "all",
