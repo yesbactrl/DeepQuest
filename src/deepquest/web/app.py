@@ -11,7 +11,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from deepquest.agent.base import TaskAgent
 from deepquest.services.proofs import ProofStore, TelegramDownload
 from deepquest.web.deps import WebContext
-from deepquest.web.routes import goals, me, tasks
+from deepquest.web.routes import dashboard, goals, me, tasks
 from deepquest.web.security import ALLOWED_HOSTS, CsrfHeaderMiddleware
 
 NOT_BUILT = """<!doctype html><meta charset="utf-8"><title>DeepQuest</title>
@@ -46,6 +46,7 @@ def create_app(
     app.include_router(me.router)
     app.include_router(goals.router)
     app.include_router(tasks.router)
+    app.include_router(dashboard.router)
 
     @app.api_route("/api/{path:path}", methods=["GET", "POST", "PATCH", "PUT", "DELETE"])
     async def unknown_api(path: str) -> None:

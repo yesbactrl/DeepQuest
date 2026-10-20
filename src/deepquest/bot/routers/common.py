@@ -1,12 +1,17 @@
-"""Общие обработчики: /cancel и всё, что не поймали другие роутеры. Подключается последним."""
+"""Общие обработчики: /cancel, /stats и всё, что не поймали другие роутеры.
+Подключается последним."""
+
+from datetime import UTC, datetime
 
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from deepquest.bot import texts
 from deepquest.db.models import User
+from deepquest.services.summary import build_summary
 
 
 async def cmd_cancel(message: Message, state: FSMContext) -> None:
@@ -15,6 +20,10 @@ async def cmd_cancel(message: Message, state: FSMContext) -> None:
         return
     await state.clear()
     await message.answer(texts.CANCELLED)
+
+
+async def cmd_stats(message: Message, session: AsyncSession, user: User) -> None:
+    await message.answer(texts.stats(await build_summary(session, user, datetime.now(UTC))))
 
 
 async def any_message(message: Message, state: FSMContext, user: User) -> None:
@@ -37,6 +46,7 @@ def create_router() -> Router:
     router = Router(name="common")
     router.message.filter(F.chat.type == "private")
     router.message.register(cmd_cancel, Command("cancel"))
+    router.message.register(cmd_stats, Command("stats"))
     router.message.register(any_message)
     router.callback_query.register(stale_callback)
     return router

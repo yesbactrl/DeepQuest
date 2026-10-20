@@ -2,7 +2,18 @@ from datetime import UTC, date, datetime, time
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import JSON, BigInteger, Enum, ForeignKey, Index, MetaData, String, Text, text
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Enum,
+    ForeignKey,
+    Index,
+    MetaData,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from deepquest.db.types import UTCDateTime
@@ -49,6 +60,8 @@ class User(Base):
     evening_at: Mapped[time]
     freezes_per_week: Mapped[int]
     onboarded_at: Mapped[datetime | None]
+    # Графики по умолчанию добавляются один раз: если все удалить, сами не вернутся.
+    dashboard_seeded: Mapped[bool] = mapped_column(default=False, server_default=text("0"))
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 
@@ -236,6 +249,39 @@ class XpEvent(Base):
     logical_date: Mapped[date]
     season: Mapped[str] = mapped_column(String(7), index=True)  # «2026-10»
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class DayStatus(StrEnum):
+    MET = "met"  # норма выполнена
+    MISSED = "missed"
+    FROZEN = "frozen"  # норма не выполнена, но день спасла заморозка — стрик не рвётся
+
+
+class DayStats(Base):
+    """Итог закрытого логического дня. Норма записывается снимком: если её потом поменять,
+    прошлые дни не пересчитываются."""
+
+    __tablename__ = "day_stats"
+    __table_args__ = (UniqueConstraint("user_id", "logical_date"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    logical_date: Mapped[date]
+    focus_min: Mapped[int]
+    norm_min: Mapped[int]
+    status: Mapped[DayStatus] = mapped_column(_str_enum(DayStatus))
+    closed_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class DashboardWidget(Base):
+    """График на дашборде. Что и как рисовать — в `config` (см. services/charts.py)."""
+
+    __tablename__ = "dashboard_widgets"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    position: Mapped[int]
+    config: Mapped[dict[str, Any]] = mapped_column(JSON)
 
 
 class FsmRecord(Base):

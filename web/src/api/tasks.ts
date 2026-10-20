@@ -132,6 +132,8 @@ function refreshAfter(client: QueryClient, detail?: TaskDetail) {
   void client.invalidateQueries({ queryKey: ["tasks"] });
   void client.invalidateQueries({ queryKey: ["timer"] });
   void client.invalidateQueries({ queryKey: ["goals"] });
+  void client.invalidateQueries({ queryKey: ["summary"] });
+  void client.invalidateQueries({ queryKey: ["chart"] });
 }
 
 function useTaskMutation<I, O>(mutationFn: (input: I) => Promise<O>, detailOf: (output: O) => TaskDetail | undefined) {

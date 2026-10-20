@@ -116,3 +116,12 @@ async def record_task_xp(
     session.add(event)
     await session.flush()
     return event
+
+
+async def season_xp(session: AsyncSession, user: User, season: str) -> int:
+    total = await session.scalar(
+        select(func.coalesce(func.sum(XpEvent.amount), 0)).where(
+            XpEvent.user_id == user.id, XpEvent.season == season
+        )
+    )
+    return total or 0

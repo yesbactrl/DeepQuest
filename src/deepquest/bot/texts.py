@@ -6,6 +6,8 @@ from zoneinfo import ZoneInfo
 
 from deepquest.db.models import Goal, Task, TaskStatus, User
 from deepquest.services.goals import MAX_TITLE_LEN, MAX_WHY_LEN
+from deepquest.services.streak import DayMark
+from deepquest.services.summary import Summary
 from deepquest.services.users import MAX_DAILY_NORM_MIN, MIN_DAILY_NORM_MIN
 from deepquest.services.validation import Explanation, ValidationOutcome
 
@@ -128,6 +130,7 @@ COMMANDS = {
     "pause": "Поставить таймер на паузу",
     "done": "Закончить задачу и сдать отчёт",
     "backlog": "Бэклог задач",
+    "stats": "Уровень, стрик и норма",
     "goals": "Цели и направления",
     "settings": "Настройки",
     "cancel": "Отменить текущий шаг",
@@ -440,3 +443,45 @@ def why(explanation: Explanation, task: Task) -> str:
         f"= {b.amount} XP",
     ]
     return "\n".join(lines)
+
+
+# Статистика
+
+MONTH_NAMES = [
+    "январь", "февраль", "март", "апрель", "май", "июнь",
+    "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь",
+]  # fmt: skip
+DAY_MARKS = {"met": "🟩", "frozen": "🟦", "missed": "🟥"}
+
+
+def _day_mark(mark: DayMark) -> str:
+    if mark.status == "today":
+        return "✅" if mark.focus_min >= mark.norm_min else "⏳"
+    return DAY_MARKS[mark.status]
+
+
+def stats(summary: Summary) -> str:
+    total, season, streak = summary.total, summary.season_level, summary.streak
+    month = MONTH_NAMES[int(summary.season[5:7]) - 1]
+    today = (
+        "норма выполнена ✓"
+        if streak.today_met
+        else f"до нормы {format_minutes(streak.norm_min - streak.today_focus_min)}"
+    )
+    days = plural(streak.current, "день", "дня", "дней")
+    return "\n".join(
+        [
+            "📊 <b>Статистика</b>",
+            "",
+            f"Уровень <b>{total.level}</b> · {total.xp} XP "
+            f"(до {total.level + 1}-го — {total.next_xp - total.xp} XP)",
+            f"Сезон «{month}»: уровень <b>{season.level}</b> · {season.xp} XP",
+            f"Сегодня: {format_minutes(streak.today_focus_min)} из "
+            f"{format_minutes(streak.norm_min)} — {today}",
+            f"Стрик: <b>{streak.current}</b> {days} · лучший {streak.best} · "
+            f"заморозок осталось {streak.freezes_left} из {streak.freezes_per_week}",
+            "",
+            "".join(_day_mark(mark) for mark in streak.recent),
+            "🟩 норма · 🟦 заморозка · 🟥 пропуск",
+        ]
+    )

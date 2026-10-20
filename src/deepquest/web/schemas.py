@@ -1,12 +1,15 @@
 """Схемы веб-API: что фронтенд отправляет и получает."""
 
-from datetime import datetime, time
+from datetime import date, datetime, time
 
 from pydantic import BaseModel, Field
 
 from deepquest.db.models import Goal, GoalStatus, Task, TaskStatus, User, ValidationVerdict
+from deepquest.services.charts import ChartConfig, ChartData
 from deepquest.services.goals import MAX_TITLE_LEN, MAX_WHY_LEN, goal_path
+from deepquest.services.levels import Level
 from deepquest.services.stats import GoalStats, TaskTotals
+from deepquest.services.summary import Summary
 
 
 class MeOut(BaseModel):
@@ -241,3 +244,106 @@ class TimerOut(BaseModel):
     started_at: datetime
     # Сколько минут ушло на задачу до текущего запуска: остальное фронтенд досчитывает сам.
     before_min: int
+
+
+# Сводка и графики
+
+
+class LevelOut(BaseModel):
+    level: int
+    xp: int
+    floor_xp: int
+    next_xp: int
+    progress: float
+
+    @classmethod
+    def of(cls, level: Level) -> LevelOut:
+        return cls(
+            level=level.level,
+            xp=level.xp,
+            floor_xp=level.floor_xp,
+            next_xp=level.next_xp,
+            progress=level.progress,
+        )
+
+
+class DayMarkOut(BaseModel):
+    day: date
+    status: str
+    focus_min: int
+    norm_min: int
+
+
+class StreakOut(BaseModel):
+    current: int
+    best: int
+    today: date
+    today_focus_min: int
+    norm_min: int
+    today_met: bool
+    freezes_left: int
+    freezes_per_week: int
+    recent: list[DayMarkOut]
+
+
+class SummaryOut(BaseModel):
+    total: LevelOut
+    season: str
+    season_level: LevelOut
+    streak: StreakOut
+
+    @classmethod
+    def of(cls, summary: Summary) -> SummaryOut:
+        streak = summary.streak
+        return cls(
+            total=LevelOut.of(summary.total),
+            season=summary.season,
+            season_level=LevelOut.of(summary.season_level),
+            streak=StreakOut(
+                current=streak.current,
+                best=streak.best,
+                today=streak.today,
+                today_focus_min=streak.today_focus_min,
+                norm_min=streak.norm_min,
+                today_met=streak.today_met,
+                freezes_left=streak.freezes_left,
+                freezes_per_week=streak.freezes_per_week,
+                recent=[
+                    DayMarkOut(
+                        day=m.day, status=m.status, focus_min=m.focus_min, norm_min=m.norm_min
+                    )
+                    for m in streak.recent
+                ],
+            ),
+        )
+
+
+class SeriesOut(BaseModel):
+    key: str
+    name: str
+    values: list[float]
+    slot: int
+
+
+class ChartDataOut(BaseModel):
+    buckets: list[str]
+    labels: list[str]
+    series: list[SeriesOut]
+    norm_min: int | None
+
+    @classmethod
+    def of(cls, data: ChartData) -> ChartDataOut:
+        return cls(
+            buckets=data.buckets,
+            labels=data.labels,
+            series=[
+                SeriesOut(key=s.key, name=s.name, values=s.values, slot=s.slot) for s in data.series
+            ],
+            norm_min=data.norm_min,
+        )
+
+
+class WidgetOut(BaseModel):
+    id: int
+    position: int
+    config: ChartConfig
