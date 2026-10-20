@@ -12,7 +12,9 @@ export const STATUS: Record<TaskStatus, { label: string; color: string }> = {
 };
 
 export const FILTERS: { value: string; label: string; statuses: TaskStatus[] }[] = [
-  { value: "work", label: "В работе", statuses: ["running", "open", "awaiting_report"] },
+  // В работе — то, что начато: таймер идёт или ждёт отчёта. Сохранённое, но не начатое — в бэклоге.
+  { value: "work", label: "В работе", statuses: ["running", "awaiting_report"] },
+  { value: "backlog", label: "В бэклоге", statuses: ["open"] },
   { value: "drafts", label: "Черновики", statuses: ["draft", "clarifying"] },
   { value: "done", label: "Готово", statuses: ["done", "rejected"] },
   {

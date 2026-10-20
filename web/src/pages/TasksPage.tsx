@@ -1,4 +1,4 @@
-import { Group, SegmentedControl, Select, Stack, Text, Title } from "@mantine/core";
+import { Group, ScrollArea, SegmentedControl, Select, Stack, Text, Title } from "@mantine/core";
 import { useSearchParams } from "react-router";
 
 import { useGoals } from "../api/goals";
@@ -9,7 +9,8 @@ import { TaskList } from "../components/tasks/TaskList";
 import { FILTERS } from "../lib/tasks";
 
 const EMPTY: Record<string, string> = {
-  work: "В работе пусто. Напиши мысль выше — агент оформит задачу, а ты сохранишь её в бэклог.",
+  work: "Сейчас ничего не начато. Запусти таймер у задачи из бэклога.",
+  backlog: "Бэклог пуст. Напиши мысль выше — агент оформит задачу, а ты сохранишь её в бэклог.",
   drafts: "Черновиков нет.",
   done: "Закрытых задач пока нет.",
   all: "Задач пока нет.",
@@ -53,11 +54,14 @@ export function TasksPage() {
       <PlanBox onPlanned={onPlanned} />
 
       <Group justify="space-between">
-        <SegmentedControl
-          data={FILTERS.map((f) => ({ value: f.value, label: f.label }))}
-          value={filter.value}
-          onChange={(value) => update({ filter: value })}
-        />
+        {/* На узком экране вкладки прокручиваются, а не обрезаются у края. */}
+        <ScrollArea type="never" maw="100%">
+          <SegmentedControl
+            data={FILTERS.map((f) => ({ value: f.value, label: f.label }))}
+            value={filter.value}
+            onChange={(value) => update({ filter: value })}
+          />
+        </ScrollArea>
         <Select
           placeholder="Все цели"
           data={goalOptions}
