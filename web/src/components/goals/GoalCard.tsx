@@ -1,8 +1,9 @@
-import { ActionIcon, Button, Card, Divider, Group, Menu, SimpleGrid, Stack, Text } from "@mantine/core";
+import { ActionIcon, Badge, Button, Card, Divider, Group, Menu, SimpleGrid, Stack, Text, ThemeIcon } from "@mantine/core";
 import { IconArchive, IconDots, IconPencil, IconPlus } from "@tabler/icons-react";
 
 import type { Direction, Goal } from "../../api/goals";
 import { formatMinutes } from "../../lib/format";
+import { goalIcon, useGoalColor } from "../../lib/goalLook";
 import { StatItem } from "../StatItem";
 import { IdleBadge } from "./IdleBadge";
 
@@ -45,7 +46,10 @@ function DirectionRow({ direction, onEdit, onArchive }: { direction: Direction }
   return (
     <Group justify="space-between" wrap="nowrap" align="flex-start">
       <Stack gap={2} style={{ minWidth: 0 }}>
-        <Text fw={500}>{direction.title}</Text>
+        <Group gap="xs">
+          <Text fw={500}>{direction.title}</Text>
+          {direction.growth_only && <GrowthOnlyBadge />}
+        </Group>
         {direction.why && (
           <Text size="sm" c="dimmed" lineClamp={2}>
             {direction.why}
@@ -64,15 +68,31 @@ function DirectionRow({ direction, onEdit, onArchive }: { direction: Direction }
   );
 }
 
+function GrowthOnlyBadge() {
+  return (
+    <Badge size="xs" variant="light" color="gray">
+      только рост
+    </Badge>
+  );
+}
+
 export function GoalCard({ goal, onEdit, onAddDirection, onArchive }: { goal: Goal } & Actions) {
   const { stats } = goal;
+  const Icon = goalIcon(goal.icon);
+  const color = useGoalColor()(goal.color);
   return (
     <Card withBorder padding="lg">
       <Group justify="space-between" wrap="nowrap" align="flex-start">
         <Stack gap={6} style={{ minWidth: 0 }}>
-          <Text fw={700} size="lg">
-            {goal.title}
-          </Text>
+          <Group gap="xs" wrap="nowrap">
+            <ThemeIcon variant="light" color={color} radius="md">
+              <Icon size={18} />
+            </ThemeIcon>
+            <Text fw={700} size="lg">
+              {goal.title}
+            </Text>
+            {goal.growth_only && <GrowthOnlyBadge />}
+          </Group>
           <IdleBadge days={stats.idle_days} />
         </Stack>
         <ItemMenu label={goal.title} onEdit={() => onEdit(goal, false)} onArchive={() => onArchive(goal, false)} />

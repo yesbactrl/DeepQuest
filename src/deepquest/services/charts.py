@@ -17,6 +17,7 @@ from sqlalchemy.orm import selectinload
 
 from deepquest.db.models import Goal, Task, TaskStatus, TimeEntry, User, XpEvent, XpKind
 from deepquest.services.days import split_by_day, user_day_bounds, user_logical_date
+from deepquest.services.goals import PALETTE
 
 
 class Metric(StrEnum):
@@ -156,7 +157,11 @@ class _SeriesMap:
                 key = f"goal:{root.id}"
                 name = root.title
             self._key_of[goal.id] = key
-            self.slots.setdefault(key, len(self.slots) - 2)
+            if config.goal_id is None and root.color in PALETTE:
+                # Цель на графиках того же цвета, что её стат на странице «Персонаж».
+                self.slots.setdefault(key, PALETTE.index(root.color))
+            else:
+                self.slots.setdefault(key, len(self.slots) - 2)
             if config.split == Split.GOAL:
                 self.names.setdefault(key, name)
 

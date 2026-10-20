@@ -1,4 +1,4 @@
-import type { TaskStatus, Verdict } from "../api/tasks";
+import type { CheckResult, TaskStatus, Verdict } from "../api/tasks";
 
 export const STATUS: Record<TaskStatus, { label: string; color: string }> = {
   clarifying: { label: "Вопрос агента", color: "yellow" },
@@ -31,6 +31,24 @@ export const VALUE_SCALE = [
   { value: 1.5, label: "×1.5 — реальный шаг вовне, некомфортно" },
   { value: 2, label: "×2 — ключевой рискованный шаг" },
 ];
+
+// «+60 XP общий · +60 Здоровье · +60 Спорт»: XP идёт сразу в уровень, стат и скилл.
+export function xpSplit(amount: number, stat: string | null, skill: string | null): string {
+  const signed = signedXp(amount);
+  if (amount === 0 || !stat) return signed;
+  const number = signed.replace(/ XP$/, "");
+  // Неразрывный пробел: «+60» не отрывается от названия при переносе строки.
+  const part = (label: string) => `${number}\u00a0${label}`;
+  return [`${signed}\u00a0общий`, part(stat), ...(skill ? [part(skill)] : [])].join(" · ");
+}
+
+// Текст уведомления после проверки: куда пошёл XP и был ли бонус слабому стату.
+export function awardMessage(result: CheckResult): string {
+  const split = xpSplit(result.xp_delta, result.stat, result.skill);
+  return result.weak_mult > 1 && result.xp_delta > 0 && result.stat
+    ? `${split}\n«${result.stat}» — самый слабый стат: ${formatMult(result.weak_mult)} к XP`
+    : split;
+}
 
 export const VERDICT: Record<Verdict, { title: string; label: string; color: string }> = {
   accepted: { title: "Засчитано", label: "засчитано", color: "teal" },

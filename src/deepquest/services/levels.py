@@ -1,13 +1,14 @@
-"""Уровни из журнала XP.
+"""Уровни из журнала XP. Одна формула на всё: общий уровень, сезон, статы и скиллы.
 
-- Общий уровень: для уровня n нужно 250 · n · (n − 1) XP (2-й — 500, 5-й — 5 000, 10-й — 22 500).
-- Уровень сезона (календарного месяца): 1 + season_xp // 500, первого числа начинается заново.
+Переход с уровня L на L + 1 стоит round(100 · L^1.4) XP: первые уровни даются быстро,
+дальше медленнее. Чтобы взять 2-й уровень, нужно 100 XP, 5-й — 1 526, 10-й — 9 237.
+Уровни нигде не хранятся: поменяй формулу — всё пересчитается само.
 """
 
 from dataclasses import dataclass
 
-LEVEL_STEP = 250
-SEASON_LEVEL_XP = 500
+BASE_XP = 100
+GROWTH = 1.4
 
 
 @dataclass(frozen=True)
@@ -23,24 +24,15 @@ class Level:
         return (self.xp - self.floor_xp) / (self.next_xp - self.floor_xp)
 
 
-def xp_for_level(level: int) -> int:
-    return LEVEL_STEP * level * (level - 1)
+def xp_to_next(level: int) -> int:
+    """Сколько XP стоит переход с `level` на следующий уровень."""
+    return round(BASE_XP * level**GROWTH)
 
 
-def total_level(xp: int) -> Level:
+def level_of(xp: int) -> Level:
     xp = max(xp, 0)
-    level = 1
-    while xp_for_level(level + 1) <= xp:
+    level, floor = 1, 0
+    while floor + xp_to_next(level) <= xp:
+        floor += xp_to_next(level)
         level += 1
-    return Level(level=level, xp=xp, floor_xp=xp_for_level(level), next_xp=xp_for_level(level + 1))
-
-
-def season_level(xp: int) -> Level:
-    xp = max(xp, 0)
-    level = 1 + xp // SEASON_LEVEL_XP
-    return Level(
-        level=level,
-        xp=xp,
-        floor_xp=(level - 1) * SEASON_LEVEL_XP,
-        next_xp=level * SEASON_LEVEL_XP,
-    )
+    return Level(level=level, xp=xp, floor_xp=floor, next_xp=floor + xp_to_next(level))

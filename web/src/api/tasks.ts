@@ -62,6 +62,8 @@ export interface TaskDetail extends Task {
     honor_mode: boolean;
     proof_mult: number;
     amount: number;
+    // ×1.2, если цель задачи была самым слабым статом.
+    weak_mult: number;
   } | null;
   can_dispute: boolean;
 }
@@ -77,6 +79,10 @@ export interface CheckResult {
   agent_failed: boolean;
   xp_delta: number;
   total_xp: number;
+  // Куда пошёл XP, кроме общего уровня.
+  stat: string | null;
+  skill: string | null;
+  weak_mult: number;
 }
 
 export interface RunningTimer {
@@ -133,6 +139,7 @@ function refreshAfter(client: QueryClient, detail?: TaskDetail) {
   void client.invalidateQueries({ queryKey: ["timer"] });
   void client.invalidateQueries({ queryKey: ["goals"] });
   void client.invalidateQueries({ queryKey: ["summary"] });
+  void client.invalidateQueries({ queryKey: ["character"] });
   void client.invalidateQueries({ queryKey: ["chart"] });
 }
 

@@ -84,6 +84,12 @@ class Goal(Base):
     # «Зачем» обязательно у цели и необязательно у направления. Агент оценивает задачи по нему.
     why: Mapped[str | None] = mapped_column(Text)
     status: Mapped[GoalStatus] = mapped_column(_str_enum(GoalStatus))
+    # Цель — это стат персонажа: цвет из палитры графиков (services/goals.PALETTE) и иконка.
+    # Пусто — цвет по порядку целей и иконка по умолчанию. Направления берут цвет своей цели.
+    color: Mapped[str | None] = mapped_column(String(16))
+    icon: Mapped[str | None] = mapped_column(String(32))
+    # XP только за рост: обычная работа (смены в найме) задачей не считается — так видит агент.
+    growth_only: Mapped[bool] = mapped_column(default=False, server_default=text("0"))
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     archived_at: Mapped[datetime | None]
 

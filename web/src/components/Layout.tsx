@@ -16,6 +16,7 @@ import {
   IconMoon,
   IconSun,
   IconTarget,
+  IconUserStar,
 } from "@tabler/icons-react";
 import { NavLink as RouterLink, Outlet, useLocation } from "react-router";
 
@@ -23,6 +24,7 @@ import { TimerWidget } from "./TimerWidget";
 
 const SECTIONS = [
   { to: "/", label: "Дашборд", icon: IconLayoutDashboard },
+  { to: "/character", label: "Персонаж", icon: IconUserStar },
   { to: "/tasks", label: "Задачи", icon: IconListCheck },
   { to: "/goals", label: "Цели", icon: IconTarget },
 ];

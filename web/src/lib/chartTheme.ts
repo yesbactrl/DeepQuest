@@ -32,6 +32,25 @@ export function chartTheme(scheme: "light" | "dark"): ChartTheme {
   };
 }
 
+// Цвета целей (статов) — те же восемь, по имени и в том же порядке, что services/goals.PALETTE:
+// цель одного цвета и на «Персонаже», и на графиках дашборда.
+export const GOAL_COLORS = [
+  { value: "blue", label: "Синий" },
+  { value: "orange", label: "Оранжевый" },
+  { value: "green", label: "Зелёный" },
+  { value: "amber", label: "Янтарный" },
+  { value: "pink", label: "Розовый" },
+  { value: "forest", label: "Хвойный" },
+  { value: "violet", label: "Фиолетовый" },
+  { value: "red", label: "Красный" },
+] as const;
+
+export type GoalColor = (typeof GOAL_COLORS)[number]["value"];
+
+export function colorSlot(color: string): number {
+  return GOAL_COLORS.findIndex((option) => option.value === color);
+}
+
 // Статусы дня — свои цвета, не пересекаются с цветами целей и всегда идут с подписью.
 export const DAY_STATUS = {
   met: { color: "#0ca30c", label: "норма выполнена" },

@@ -17,7 +17,7 @@ import { useState } from "react";
 
 import { type TaskDetail, useDispute } from "../../api/tasks";
 import { formatMinutes } from "../../lib/format";
-import { VERDICT, formatMult, signedXp } from "../../lib/tasks";
+import { VERDICT, formatMult, xpSplit } from "../../lib/tasks";
 import { VoiceButton, appendText } from "../VoiceButton";
 
 function Breakdown({ task }: { task: TaskDetail }) {
@@ -32,6 +32,7 @@ function Breakdown({ task }: { task: TaskDetail }) {
     ["Ценность задачи", `${formatMult(b.value_mult)}${task.mult_reason ? ` — ${task.mult_reason}` : ""}`],
     ["Проверка отчёта", `${VERDICT[b.verdict].label} ${formatMult(b.validation_mult)}`],
     ["Пруф", `${b.honor_mode ? "на честном слове" : "есть"} ${formatMult(b.proof_mult)}`],
+    ...(b.weak_mult !== 1 ? [["Самый слабый стат", `${formatMult(b.weak_mult)} — бонус отстающей цели`]] : []),
   ];
   return (
     <Stack gap={4}>
@@ -49,7 +50,8 @@ function Breakdown({ task }: { task: TaskDetail }) {
         </Table.Tbody>
       </Table>
       <Text size="sm" ff="monospace" c="dimmed">
-        {b.counted_min} мин × {b.value_mult} × {b.validation_mult} × {b.proof_mult} = {b.amount} XP
+        {b.counted_min} мин × {b.value_mult} × {b.validation_mult} × {b.proof_mult}
+        {b.weak_mult !== 1 && ` × ${b.weak_mult}`} = {b.amount} XP
       </Text>
     </Stack>
   );
@@ -122,7 +124,7 @@ function DisputeForm({ task }: { task: TaskDetail }) {
                 notifications.show({
                   color: "orange",
                   title: "Пересмотрено",
-                  message: `${VERDICT[result.task.validation!.verdict].title} · ${signedXp(result.xp_delta)}`,
+                  message: `${VERDICT[result.task.validation!.verdict].title} · ${xpSplit(result.xp_delta, result.stat, result.skill)}`,
                 }),
             })
           }

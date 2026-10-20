@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from deepquest.bot import texts
 from deepquest.db.models import User
-from deepquest.services.summary import build_summary
+from deepquest.services.character import build_character
 
 
 async def cmd_cancel(message: Message, state: FSMContext) -> None:
@@ -23,7 +23,7 @@ async def cmd_cancel(message: Message, state: FSMContext) -> None:
 
 
 async def cmd_stats(message: Message, session: AsyncSession, user: User) -> None:
-    await message.answer(texts.stats(await build_summary(session, user, datetime.now(UTC))))
+    await message.answer(texts.stats(await build_character(session, user, datetime.now(UTC))))
 
 
 async def any_message(message: Message, state: FSMContext, user: User) -> None:

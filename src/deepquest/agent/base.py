@@ -137,14 +137,22 @@ def _as_json(value: object) -> str:
     return json.dumps(asdict(value), ensure_ascii=False, indent=2)  # type: ignore[call-overload]
 
 
+def _growth_only(goal: GoalContext) -> str:
+    return " [только рост]" if goal.growth_only else ""
+
+
 def render_goals(goals: Sequence[GoalContext]) -> str:
     if not goals:
         return _block("goals", "Целей пока нет.")
     lines = []
     for goal in goals:
-        lines.append(f"- id={goal.id}: цель «{goal.title}». Зачем: {goal.why or 'не указано'}")
+        lines.append(
+            f"- id={goal.id}: цель «{goal.title}». Зачем: {goal.why or 'не указано'}"
+            + _growth_only(goal)
+        )
         lines += [
             f"  - id={d.id}: направление «{d.title}». Зачем: {d.why or 'не указано'}"
+            + _growth_only(d)
             for d in goal.directions
         ]
     return _block("goals", "\n".join(lines))

@@ -21,7 +21,7 @@ from deepquest.db.models import (
 from deepquest.services import goals, streak
 from deepquest.services.charts import Bucket, ChartConfig, Metric, Period, Split, chart_data
 from deepquest.services.days import season_of, split_by_day
-from deepquest.services.levels import season_level, total_level
+from deepquest.services.levels import level_of, xp_to_next
 from deepquest.services.proofs import ProofStore
 from deepquest.services.tasks import TaskFields, create_draft
 from deepquest.services.users import get_or_create_user
@@ -40,24 +40,28 @@ def at(day: int, hour: int, minute: int = 0) -> datetime:
 # Уровни и границы дня
 
 
+def test_level_steps_grow() -> None:
+    assert [xp_to_next(level) for level in range(1, 6)] == [100, 264, 466, 696, 952]
+
+
 @pytest.mark.parametrize(
     ("xp", "level", "floor", "next_"),
     [
-        (0, 1, 0, 500),
-        (499, 1, 0, 500),
-        (500, 2, 500, 1500),
-        (5000, 5, 5000, 7500),
-        (22500, 10, 22500, 27500),
+        (0, 1, 0, 100),
+        (99, 1, 0, 100),
+        (100, 2, 100, 364),
+        (1526, 5, 1526, 2478),
+        (9237, 10, 9237, 11749),
+        (-5, 1, 0, 100),
     ],
 )
-def test_total_level(xp: int, level: int, floor: int, next_: int) -> None:
-    result = total_level(xp)
+def test_level_of(xp: int, level: int, floor: int, next_: int) -> None:
+    result = level_of(xp)
     assert (result.level, result.floor_xp, result.next_xp) == (level, floor, next_)
 
 
-def test_season_level() -> None:
-    assert season_level(0).level == 1
-    assert (season_level(1240).level, season_level(1240).progress) == (3, pytest.approx(0.48))
+def test_level_progress() -> None:
+    assert level_of(232).progress == pytest.approx(0.5)
 
 
 def test_split_by_day_respects_boundary() -> None:
@@ -287,8 +291,8 @@ async def test_summary_api(
 
     summary = (await client.get("/api/summary")).json()
 
-    assert (summary["total"]["level"], summary["total"]["xp"]) == (2, 700)
-    assert summary["season_level"]["level"] == 2
+    assert (summary["total"]["level"], summary["total"]["xp"]) == (3, 700)
+    assert summary["season_level"]["level"] == 3
     assert summary["streak"]["norm_min"] == 60
     assert summary["streak"]["recent"][-1]["status"] == "today"
 

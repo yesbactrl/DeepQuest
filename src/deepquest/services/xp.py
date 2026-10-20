@@ -2,7 +2,10 @@
 
 Агент только выносит вердикт; сколько это в XP, решает формула здесь:
 
-    XP = round(min(факт_мин, 2 × оценка_мин) × value_mult × validation_mult × proof_mult)
+    XP = round(min(факт_мин, 2 × оценка_мин)
+               × value_mult × validation_mult × proof_mult × weak_mult)
+
+weak_mult — ×1.2, если цель задачи сейчас самый слабый стат (services/character.py).
 """
 
 from dataclasses import asdict, dataclass
@@ -37,6 +40,8 @@ class XpBreakdown:
     honor_mode: bool
     proof_mult: float
     amount: int
+    # В начислениях до появления статов этого поля нет: там бонуса не было.
+    weak_mult: float = 1.0
 
     @property
     def capped(self) -> bool:
@@ -57,11 +62,12 @@ def compute_task_xp(
     value_mult: float,
     verdict: ValidationVerdict,
     honor_mode: bool,
+    weak_mult: float = 1.0,
 ) -> XpBreakdown:
     counted = min(actual_min, CAP_FACTOR * estimate_min)
     validation_mult = VALIDATION_MULTS[verdict]
     proof_mult = HONOR_MODE_MULT if honor_mode else 1.0
-    amount = round(counted * XP_PER_MINUTE * value_mult * validation_mult * proof_mult)
+    amount = round(counted * XP_PER_MINUTE * value_mult * validation_mult * proof_mult * weak_mult)
     return XpBreakdown(
         actual_min=actual_min,
         estimate_min=estimate_min,
@@ -72,6 +78,7 @@ def compute_task_xp(
         honor_mode=honor_mode,
         proof_mult=proof_mult,
         amount=amount,
+        weak_mult=weak_mult,
     )
 
 
@@ -87,6 +94,12 @@ async def total_xp(session: AsyncSession, user: User) -> int:
         select(func.coalesce(func.sum(XpEvent.amount), 0)).where(XpEvent.user_id == user.id)
     )
     return total or 0
+
+
+async def first_event(session: AsyncSession, task: Task) -> XpEvent | None:
+    return await session.scalar(
+        select(XpEvent).where(XpEvent.task_id == task.id).order_by(XpEvent.id).limit(1)
+    )
 
 
 async def latest_event(session: AsyncSession, task: Task) -> XpEvent | None:

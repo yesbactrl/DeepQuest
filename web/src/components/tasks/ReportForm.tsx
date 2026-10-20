@@ -17,7 +17,7 @@ import { useEffect, useMemo, useState, type ClipboardEvent } from "react";
 
 import { type TaskDetail, useReport } from "../../api/tasks";
 import { formatMinutes } from "../../lib/format";
-import { VERDICT, signedXp } from "../../lib/tasks";
+import { VERDICT, awardMessage } from "../../lib/tasks";
 import { VoiceButton, appendText } from "../VoiceButton";
 
 const MAX_FILES = 5;
@@ -78,7 +78,8 @@ export function ReportForm({ task }: { task: TaskDetail }) {
           notifications.show({
             color: verdict ? VERDICT[verdict].color : "teal",
             title: verdict ? VERDICT[verdict].title : "Проверено",
-            message: signedXp(result.xp_delta),
+            message: awardMessage(result),
+            style: { whiteSpace: "pre-line" },
           });
         },
       },

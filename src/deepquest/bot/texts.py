@@ -5,9 +5,9 @@ from html import escape
 from zoneinfo import ZoneInfo
 
 from deepquest.db.models import Goal, Task, TaskStatus, User
+from deepquest.services.character import WEAK_STAT_MULT, Character, Stat
 from deepquest.services.goals import MAX_TITLE_LEN, MAX_WHY_LEN
 from deepquest.services.streak import DayMark
-from deepquest.services.summary import Summary
 from deepquest.services.users import MAX_DAILY_NORM_MIN, MIN_DAILY_NORM_MIN
 from deepquest.services.validation import Explanation, ValidationOutcome
 from deepquest.services.voice import MAX_VOICE_SECONDS
@@ -431,16 +431,38 @@ def _signed_xp(amount: int) -> str:
     return f"+{amount} XP" if amount > 0 else f"{amount} XP"
 
 
+def stat_and_skill(task: Task) -> tuple[str | None, str | None]:
+    """Стат (цель) и скилл (направление) задачи. Цель и её родитель должны быть подгружены."""
+    goal = task.goal
+    if goal is None:
+        return None, None
+    return (goal.parent.title, goal.title) if goal.parent else (goal.title, None)
+
+
+def xp_split(amount: int, stat: str | None, skill: str | None) -> str:
+    """«+60 XP общий · +60 Здоровье · +60 Спорт»: XP идёт сразу в уровень, стат и скилл."""
+    signed = _signed_xp(amount)
+    if amount == 0 or stat is None:
+        return signed
+    number = signed.removesuffix(" XP")
+    parts = [f"{signed} общий", f"{number} {escape(stat)}"]
+    if skill is not None:
+        parts.append(f"{number} {escape(skill)}")
+    return " · ".join(parts)
+
+
 def verdict_result(outcome: ValidationOutcome, *, disputed: bool = False) -> str:
     assert outcome.validation is not None
     header = VERDICT_HEADERS[outcome.validation.verdict.value]
     if disputed:
         header = f"⚖️ Пересмотрел. {header}"
-    return (
-        f"{header} · {_signed_xp(outcome.xp_delta)}\n\n"
-        f"{escape(outcome.validation.comment)}\n\n"
-        f"Всего: {outcome.total_xp} XP"
-    )
+    stat, skill = stat_and_skill(outcome.task)
+    lines = [f"{header} · {xp_split(outcome.xp_delta, stat, skill)}"]
+    weak = outcome.breakdown.weak_mult if outcome.breakdown else 1.0
+    if weak > 1 and outcome.xp_delta > 0 and not disputed and stat is not None:
+        lines.append(f"💪 «{escape(stat)}» — самый слабый стат: {format_mult(weak)} к XP")
+    lines += ["", escape(outcome.validation.comment), "", f"Всего: {outcome.total_xp} XP"]
+    return "\n".join(lines)
 
 
 def why(explanation: Explanation, task: Task) -> str:
@@ -461,10 +483,12 @@ def why(explanation: Explanation, task: Task) -> str:
         f"• Проверка отчёта: {VERDICT_LABELS[b.verdict]} {format_mult(b.validation_mult)} — "
         f"{escape(explanation.validation.reason)}",
         f"• Пруф: {proof} {format_mult(b.proof_mult)}",
-        "",
-        f"{b.counted_min} мин × {b.value_mult:g} × {b.validation_mult:g} × {b.proof_mult:g} "
-        f"= {b.amount} XP",
     ]
+    formula = f"{b.counted_min} мин × {b.value_mult:g} × {b.validation_mult:g} × {b.proof_mult:g}"
+    if b.weak_mult != 1:
+        lines.append(f"• Самый слабый стат: {format_mult(b.weak_mult)} — бонус отстающей цели")
+        formula += f" × {b.weak_mult:g}"
+    lines += ["", f"{formula} = {b.amount} XP"]
     return "\n".join(lines)
 
 
@@ -483,7 +507,18 @@ def _day_mark(mark: DayMark) -> str:
     return DAY_MARKS[mark.status]
 
 
-def stats(summary: Summary) -> str:
+def _stat_line(stat: Stat) -> str:
+    line = f"• {escape(stat.goal.title)} — ур. <b>{stat.level.level}</b>"
+    if stat.skills:
+        skills = " · ".join(f"{escape(s.goal.title)} {s.level.level}" for s in stat.skills)
+        line += f" ({skills})"
+    if stat.weakest:
+        line += f"\n   ⚠️ самый слабый стат: {format_mult(WEAK_STAT_MULT)} к XP"
+    return line
+
+
+def stats(character: Character) -> str:
+    summary = character.summary
     total, season, streak = summary.total, summary.season_level, summary.streak
     month = MONTH_NAMES[int(summary.season[5:7]) - 1]
     today = (
@@ -506,5 +541,6 @@ def stats(summary: Summary) -> str:
             "",
             "".join(_day_mark(mark) for mark in streak.recent),
             "🟩 норма · 🟦 заморозка · 🟥 пропуск",
+            *(["", "<b>Статы</b>", *map(_stat_line, character.stats)] if character.stats else []),
         ]
     )

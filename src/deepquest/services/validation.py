@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from deepquest.agent.base import AgentError, TaskAgent
 from deepquest.agent.schemas import ProofImage, ReportContext
 from deepquest.db.models import Report, Task, TaskStatus, User, Validation, ValidationVerdict
-from deepquest.services import tasks, timer, xp
+from deepquest.services import character, tasks, timer, xp
 from deepquest.services.agent_log import record_calls
 from deepquest.services.xp import XpBreakdown
 
@@ -195,6 +195,7 @@ async def _check(
         value_mult=task.value_mult,
         verdict=verdict,
         honor_mode=report.honor_mode,
+        weak_mult=await character.weak_mult(session, user, task, now),
     )
     event = await xp.record_task_xp(session, user, task, breakdown, now)
     task.status = TaskStatus.REJECTED if verdict == ValidationVerdict.REJECTED else TaskStatus.DONE

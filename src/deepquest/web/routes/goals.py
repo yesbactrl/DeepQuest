@@ -18,6 +18,7 @@ WHY_INVALID = f"«Зачем» — до {MAX_WHY_LEN} символов."
 WHY_REQUIRED = "У цели должно быть «зачем»: по нему агент оценивает задачи."
 GOAL_NOT_FOUND = "Цель не найдена: возможно, она уже в архиве."
 NESTED_DIRECTION = "Направление добавляется только к цели, а не к другому направлению."
+DIRECTION_LOOK = "Цвет и иконка задаются у цели: направления берут их у неё."
 
 
 async def _goal_list(session: AsyncSession, user: User) -> list[GoalOut]:
@@ -79,6 +80,14 @@ async def update_goal(
         if why is None and not goal.is_direction:
             raise HTTPException(422, WHY_REQUIRED)
         goal.why = why
+    if (body.color is not None or body.icon is not None) and goal.is_direction:
+        raise HTTPException(422, DIRECTION_LOOK)
+    if body.color is not None:
+        goal.color = body.color
+    if body.icon is not None:
+        goal.icon = body.icon or None
+    if body.growth_only is not None:
+        goal.growth_only = body.growth_only
     return await _goal_list(session, user)
 
 

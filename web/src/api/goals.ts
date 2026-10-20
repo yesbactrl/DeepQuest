@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import type { GoalColor } from "../lib/chartTheme";
 import { api } from "./client";
 
 export interface GoalStats {
@@ -14,13 +15,26 @@ export interface Direction {
   id: number;
   title: string;
   why: string | null;
+  // XP только за рост: обычную работу по цели агент задачей не оформляет.
+  growth_only: boolean;
   created_at: string;
   stats: GoalStats;
 }
 
 export interface Goal extends Direction {
   status: "active" | "archived";
+  color: GoalColor;
+  icon: string | null;
   directions: Direction[];
+}
+
+export interface GoalChanges {
+  title?: string;
+  why?: string;
+  color?: GoalColor;
+  // Пустая строка — иконка по умолчанию.
+  icon?: string;
+  growth_only?: boolean;
 }
 
 export interface GoalInput {
@@ -40,7 +54,12 @@ function useGoalsMutation<T>(mutationFn: (input: T) => Promise<Goal[]>) {
   const client = useQueryClient();
   return useMutation({
     mutationFn,
-    onSuccess: (goals) => client.setQueryData(GOALS_KEY, goals),
+    onSuccess: (goals) => {
+      client.setQueryData(GOALS_KEY, goals);
+      // Цели — это статы персонажа, а их цвета видны на графиках.
+      void client.invalidateQueries({ queryKey: ["character"] });
+      void client.invalidateQueries({ queryKey: ["chart"] });
+    },
   });
 }
 
@@ -49,7 +68,7 @@ export function useCreateGoal() {
 }
 
 export function useUpdateGoal() {
-  return useGoalsMutation(({ id, ...changes }: { id: number; title?: string; why?: string }) =>
+  return useGoalsMutation(({ id, ...changes }: { id: number } & GoalChanges) =>
     api.patch<Goal[]>(`/goals/${id}`, changes),
   );
 }

@@ -107,6 +107,7 @@ async def _detail(session: AsyncSession, task: Task) -> TaskDetailOut:
             honor_mode=b.honor_mode,
             proof_mult=b.proof_mult,
             amount=b.amount,
+            weak_mult=b.weak_mult,
         )
     return TaskDetailOut(
         **TaskOut.of(task, totals).model_dump(),
@@ -141,11 +142,16 @@ async def _plan_out(session: AsyncSession, outcome: PlanOutcome) -> PlanOutcomeO
 
 
 async def _check_out(session: AsyncSession, user: User, outcome: ValidationOutcome) -> CheckOut:
+    goal = outcome.task.goal
+    stat = goal.parent if goal is not None and goal.parent is not None else goal
     return CheckOut(
         task=await _fresh_detail(session, user, outcome.task.id),
         agent_failed=outcome.agent_failed,
         xp_delta=outcome.xp_delta,
         total_xp=outcome.total_xp,
+        stat=stat.title if stat is not None else None,
+        skill=goal.title if goal is not None and goal.parent is not None else None,
+        weak_mult=outcome.breakdown.weak_mult if outcome.breakdown else 1.0,
     )
 
 

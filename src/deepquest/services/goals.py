@@ -8,6 +8,9 @@ from deepquest.db.models import Goal, GoalStatus, User
 
 MAX_TITLE_LEN = 80
 MAX_WHY_LEN = 1000
+# Цвета статов — те же 8 цветов и в том же порядке, что у графиков (web/src/lib/chartTheme.ts):
+# они проверены на контраст в светлой и тёмной теме, поэтому произвольный цвет не задаётся.
+PALETTE = ("blue", "orange", "green", "amber", "pink", "forest", "violet", "red")
 
 
 class GoalError(ValueError):
@@ -84,11 +87,28 @@ async def create_goal(
         title=clean_title(title),
         why=clean_why(why) if why is not None else None,
         status=GoalStatus.ACTIVE,
+        # Направление берёт цвет своей цели.
+        color=None if parent is not None else await _free_color(session, user),
         children=[],
     )
     session.add(goal)
     await session.flush()
     return goal
+
+
+async def _free_color(session: AsyncSession, user: User) -> str:
+    """Первый цвет палитры, который не занят активной целью; если заняты все — по кругу."""
+    used = list(
+        await session.scalars(
+            select(Goal.color).where(
+                Goal.user_id == user.id,
+                Goal.parent_id.is_(None),
+                Goal.status == GoalStatus.ACTIVE,
+            )
+        )
+    )
+    free = [color for color in PALETTE if color not in used]
+    return free[0] if free else PALETTE[len(used) % len(PALETTE)]
 
 
 def goal_path(goal: Goal) -> str:

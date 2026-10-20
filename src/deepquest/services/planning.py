@@ -37,8 +37,13 @@ async def goal_context(session: AsyncSession, user: User) -> list[GoalContext]:
             title=goal.title,
             why=goal.why,
             directions=tuple(
-                GoalContext(id=d.id, title=d.title, why=d.why) for d in goal.active_children
+                # Направление цели «только рост» тоже только про рост.
+                GoalContext(
+                    id=d.id, title=d.title, why=d.why, growth_only=d.growth_only or goal.growth_only
+                )
+                for d in goal.active_children
             ),
+            growth_only=goal.growth_only,
         )
         for goal in await goals.list_goals(session, user)
     ]

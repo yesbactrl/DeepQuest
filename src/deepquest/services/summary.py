@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from deepquest.db.models import User
 from deepquest.services import xp
 from deepquest.services.days import season_of
-from deepquest.services.levels import Level, season_level, total_level
+from deepquest.services.levels import Level, level_of
 from deepquest.services.streak import StreakInfo, streak_info
 
 
@@ -24,8 +24,8 @@ async def build_summary(session: AsyncSession, user: User, now: datetime) -> Sum
     streak = await streak_info(session, user, now)
     season = season_of(streak.today)
     return Summary(
-        total=total_level(await xp.total_xp(session, user)),
+        total=level_of(await xp.total_xp(session, user)),
         season=season,
-        season_level=season_level(await xp.season_xp(session, user, season)),
+        season_level=level_of(await xp.season_xp(session, user, season)),
         streak=streak,
     )

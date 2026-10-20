@@ -37,6 +37,8 @@ class GoalContext:
     title: str
     why: str | None
     directions: tuple[GoalContext, ...] = field(default=())
+    # XP только за рост: обычная работа по этой цели задачей не считается.
+    growth_only: bool = False
 
 
 @dataclass(frozen=True)
