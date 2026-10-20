@@ -1,4 +1,4 @@
-import type { CheckResult, TaskStatus, Verdict } from "../api/tasks";
+import type { CheckResult, Task, TaskStatus, Verdict } from "../api/tasks";
 
 export const STATUS: Record<TaskStatus, { label: string; color: string }> = {
   clarifying: { label: "Вопрос агента", color: "yellow" },
@@ -65,4 +65,25 @@ export function formatMult(value: number): string {
 
 export function signedXp(amount: number): string {
   return amount > 0 ? `+${amount} XP` : `${amount} XP`;
+}
+
+// Сортировка списка: по умолчанию свежие сверху (как отдаёт сервер), можно по оценке времени.
+// Задачи без оценки при сортировке по времени уходят в конец.
+export const SORTS = [
+  { value: "recent", label: "Сначала свежие" },
+  { value: "short", label: "Сначала короткие" },
+  { value: "long", label: "Сначала длинные" },
+] as const;
+
+export type SortValue = (typeof SORTS)[number]["value"];
+
+export function sortTasks(tasks: Task[], sort: SortValue): Task[] {
+  if (sort === "recent") return tasks;
+  const sign = sort === "short" ? 1 : -1;
+  return [...tasks].sort((a, b) => {
+    if (a.estimate_min === null || b.estimate_min === null) {
+      return (a.estimate_min === null ? 1 : 0) - (b.estimate_min === null ? 1 : 0);
+    }
+    return sign * (a.estimate_min - b.estimate_min);
+  });
 }

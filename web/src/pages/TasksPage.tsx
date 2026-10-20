@@ -6,7 +6,7 @@ import { type PlanOutcome, useTasks } from "../api/tasks";
 import { PlanBox } from "../components/tasks/PlanBox";
 import { TaskDrawer } from "../components/tasks/TaskDrawer";
 import { TaskList } from "../components/tasks/TaskList";
-import { FILTERS } from "../lib/tasks";
+import { FILTERS, SORTS, type SortValue, sortTasks } from "../lib/tasks";
 
 const EMPTY: Record<string, string> = {
   work: "Сейчас ничего не начато. Запусти таймер у задачи из бэклога.",
@@ -23,6 +23,7 @@ export function TasksPage() {
   const filter =
     FILTERS.find((f) => f.value === (params.get("filter") ?? "work")) ?? FILTERS[0];
   const goalId = params.get("goal") ? Number(params.get("goal")) : null;
+  const sort: SortValue = SORTS.find((s) => s.value === params.get("sort"))?.value ?? "recent";
   const openTaskId = params.get("task") ? Number(params.get("task")) : null;
   const goals = useGoals();
   const tasks = useTasks(filter.statuses, goalId);
@@ -64,18 +65,28 @@ export function TasksPage() {
             onChange={(value) => update({ filter: value })}
           />
         </ScrollArea>
-        <Select
-          placeholder="Все цели"
-          data={goalOptions}
-          value={goalId === null ? null : String(goalId)}
-          onChange={(value) => update({ goal: value })}
-          clearable
-          w={220}
-        />
+        <Group gap="xs">
+          <Select
+            aria-label="Сортировка"
+            data={SORTS.map((s) => ({ value: s.value, label: s.label }))}
+            value={sort}
+            onChange={(value) => update({ sort: value === "recent" ? null : value })}
+            allowDeselect={false}
+            w={190}
+          />
+          <Select
+            placeholder="Все цели"
+            data={goalOptions}
+            value={goalId === null ? null : String(goalId)}
+            onChange={(value) => update({ goal: value })}
+            clearable
+            w={220}
+          />
+        </Group>
       </Group>
 
       <TaskList
-        tasks={tasks.data}
+        tasks={tasks.data && sortTasks(tasks.data, sort)}
         loading={tasks.isPending}
         empty={EMPTY[filter.value]}
         onOpen={(id) => update({ task: String(id) })}
