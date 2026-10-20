@@ -5,3 +5,48 @@
 .task-row:hover {
   border-color: var(--mantine-primary-color-filled);
 }
+
+/* Квадратик задачи: XP, а при наведении он уезжает вверх и показывает время и множитель. */
+.xp-tile {
+  position: relative;
+  flex-shrink: 0;
+  width: 56px;
+  height: 56px;
+  overflow: hidden;
+  border-radius: var(--mantine-radius-md);
+  background: var(--mantine-color-violet-light);
+  color: var(--mantine-color-violet-light-color);
+  cursor: default;
+}
+
+.xp-tile__face {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  transition: transform 180ms ease, opacity 180ms ease;
+}
+
+.xp-tile__face--details {
+  transform: translateY(100%);
+  opacity: 0;
+}
+
+.xp-tile:hover .xp-tile__face--xp,
+.xp-tile:focus-visible .xp-tile__face--xp {
+  transform: translateY(-100%);
+  opacity: 0;
+}
+
+.xp-tile:hover .xp-tile__face--details,
+.xp-tile:focus-visible .xp-tile__face--details {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .xp-tile__face {
+    transition: none;
+  }
+}

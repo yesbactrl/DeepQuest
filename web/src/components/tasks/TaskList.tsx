@@ -22,40 +22,54 @@ const showError = (error: Error) => notifications.show({ color: "red", message: 
 function meta(task: Task): string {
   const parts = [];
   if (task.goal_path) parts.push(task.goal_path);
-  if (task.value_mult !== null) parts.push(formatMult(task.value_mult));
   if (task.spent_min) parts.push(`потрачено ${formatMinutes(task.spent_min)}`);
-  if (task.xp) parts.push(`${task.xp} XP`);
   return parts.join(" · ");
 }
 
-// Оценка крупно в квадратике слева: сколько времени займёт задача, видно сразу.
-function estimateParts(minutes: number | null): [string, string] {
-  if (minutes === null) return ["?", "без оценки"];
+function formatDuration(minutes: number): string {
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
-  if (!hours) return [String(rest), "мин"];
-  if (!rest) return [String(hours), "ч"];
-  return [`${hours}:${String(rest).padStart(2, "0")}`, "ч"];
+  if (!hours) return `${rest} мин`;
+  if (!rest) return `${hours} ч`;
+  return `${hours}:${String(rest).padStart(2, "0")} ч`;
 }
 
-function EstimateTile({ minutes }: { minutes: number | null }) {
-  const [value, unit] = estimateParts(minutes);
+// Сколько XP даст задача: за закрытую — начисленное, иначе — оценка × множитель
+// (если отчёт засчитают целиком и с пруфом). Бонус слабому стату сюда не входит.
+function tileXp(task: Task): number | null {
+  if (task.status === "done" || task.status === "rejected") return task.xp;
+  if (task.estimate_min === null || task.value_mult === null) return null;
+  return Math.round(task.estimate_min * task.value_mult);
+}
+
+// Квадратик слева: XP видно сразу, а при наведении — длительность и множитель.
+function XpTile({ task }: { task: Task }) {
+  const xp = tileXp(task);
+  const duration = task.estimate_min !== null ? formatDuration(task.estimate_min) : "без оценки";
+  const mult = task.value_mult !== null ? formatMult(task.value_mult) : "—";
   return (
-    <Paper
-      w={56}
-      h={56}
-      radius="md"
-      bg="var(--mantine-color-default-hover)"
-      style={{ flexShrink: 0, display: "grid", placeItems: "center", alignContent: "center" }}
-      aria-label={minutes === null ? "Без оценки" : `Оценка ${formatMinutes(minutes)}`}
+    <div
+      className="xp-tile"
+      tabIndex={0}
+      aria-label={xp === null ? "Без оценки" : `${xp} XP: ${duration}, ${mult}`}
     >
-      <Text fw={700} size="lg" lh={1.1}>
-        {value}
-      </Text>
-      <Text size="xs" c="dimmed" lh={1.1}>
-        {unit}
-      </Text>
-    </Paper>
+      <div className="xp-tile__face xp-tile__face--xp">
+        <Text fw={700} size="lg" lh={1.1} c="inherit">
+          {xp === null ? "?" : `+${xp}`}
+        </Text>
+        <Text size="xs" lh={1.1} c="inherit" opacity={0.8}>
+          XP
+        </Text>
+      </div>
+      <div className="xp-tile__face xp-tile__face--details">
+        <Text fw={600} size="sm" lh={1.2} c="inherit">
+          {duration}
+        </Text>
+        <Text size="xs" lh={1.2} c="inherit" opacity={0.8}>
+          {mult}
+        </Text>
+      </div>
+    </div>
   );
 }
 
@@ -167,7 +181,7 @@ function Row({ task, onOpen }: { task: Task; onOpen: (id: number) => void }) {
   return (
     <Paper withBorder p="sm" className="task-row">
       <Group wrap="nowrap" gap="sm">
-        <EstimateTile minutes={task.estimate_min} />
+        <XpTile task={task} />
         <UnstyledButton onClick={() => onOpen(task.id)} style={{ flex: 1, minWidth: 0 }}>
           <Stack gap={2}>
             <Text fw={500} truncate>
