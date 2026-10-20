@@ -10,6 +10,7 @@ from deepquest.services.streak import DayMark
 from deepquest.services.summary import Summary
 from deepquest.services.users import MAX_DAILY_NORM_MIN, MIN_DAILY_NORM_MIN
 from deepquest.services.validation import Explanation, ValidationOutcome
+from deepquest.services.voice import MAX_VOICE_SECONDS
 
 
 def format_minutes(minutes: int) -> str:
@@ -119,7 +120,7 @@ SETTINGS_REDO_BUTTON = "Пройти настройку заново"
 CANCELLED = "Ок, отменил. Настройки можно пройти заново: /settings"
 NOTHING_TO_CANCEL = "Отменять нечего."
 NEED_ONBOARDING = "Давай сначала настроимся: /start"
-ONLY_TEXT = "Пока я понимаю только текст: напиши задачу словами."
+ONLY_TEXT = "Я понимаю текст и голосовые: напиши или надиктуй задачу."
 UNKNOWN_COMMAND = "Не знаю такой команды. Есть /backlog, /goals и /settings."
 ANSWER_THE_QUESTION = "Ответь на вопрос выше или напиши /cancel."
 STALE_BUTTON = "Эта кнопка уже не работает."
@@ -256,9 +257,31 @@ TASK_SAVED = "✓ В бэклоге"
 TASK_CANCELLED = "✗ Отменено"
 TASK_REMOVED = "🗑 Убрано из бэклога"
 TASK_NOT_FOUND = "Задача не найдена: возможно, её уже убрали."
-BACKLOG_EMPTY = "<b>Бэклог</b>\n\nПусто. Напиши мне, что хочешь сделать, — я оформлю задачу."
+BACKLOG_EMPTY = (
+    "<b>Бэклог</b>\n\nПусто. Напиши или надиктуй голосовым, что хочешь сделать, — я оформлю задачу."
+)
 NO_GOAL = "не выбрана"
 NO_ESTIMATE = "<i>нет, агент был недоступен</i>"
+
+
+# Голосовые
+
+VOICE_OFF = "Голосовые выключены (VOICE_ENABLED в .env). Напиши текстом."
+VOICE_TOO_LONG = (
+    f"Голосовое длиннее {MAX_VOICE_SECONDS // 60} минут — слишком долго распознавать. "
+    "Раздели на части или напиши текстом."
+)
+VOICE_EMPTY = "🎙 Ничего не расслышал. Попробуй ещё раз или напиши текстом."
+
+
+def voice_failed(reason: str | None = None) -> str:
+    detail = f" {reason}" if reason else ""
+    return f"⚠️ Не получилось распознать голосовое.{detail} Попробуй ещё раз или напиши текстом."
+
+
+def voice_heard(text: str) -> str:
+    return f"🎙 <i>{escape(_shorten(text, 1500))}</i>"
+
 
 SAVE_BUTTON = "✅ Сохранить"
 EDIT_TASK_BUTTON = "✏️ Поправить"
@@ -347,7 +370,7 @@ NO_TIMER = "Таймер не запущен. Открой задачу в /back
 PICK_TASK = "Выбери задачу и нажми «Старт»."
 NOT_ESTIMATED = "Сначала нужна оценка: нажми «Оценить ещё раз» на карточке задачи."
 CHECKING = "⏳ Проверяю отчёт…"
-REPORT_NEEDS_CONTENT = "Пришли отчёт текстом, скрином или ссылкой."
+REPORT_NEEDS_CONTENT = "Пришли отчёт текстом или голосовым, скрином или ссылкой."
 REPORT_SAVED_AGENT_DOWN = (
     "⚠️ Отчёт сохранён, но агент сейчас недоступен. Нажми «Проверить ещё раз» чуть позже."
 )

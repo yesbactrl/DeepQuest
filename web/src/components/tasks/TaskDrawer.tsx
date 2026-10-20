@@ -39,6 +39,7 @@ import { formatMinutes } from "../../lib/format";
 import { STATUS, formatMult } from "../../lib/tasks";
 import { formatClock, formatTime, useNow } from "../../lib/time";
 import { StatItem } from "../StatItem";
+import { VoiceButton, appendText } from "../VoiceButton";
 import { ReportForm } from "./ReportForm";
 import { TaskEditForm } from "./TaskEditForm";
 import { VerdictBlock } from "./VerdictBlock";
@@ -102,6 +103,11 @@ function ReviseBox({ task }: { task: TaskDetail }) {
         disabled={revise.isPending}
       />
       <Group gap="xs">
+        <VoiceButton
+          size={30}
+          onText={(spoken) => setCorrection((current) => appendText(current, spoken))}
+          disabled={revise.isPending}
+        />
         <Button
           size="xs"
           variant="light"
@@ -142,7 +148,11 @@ function ClarifyBox({ task, onPlanned }: { task: TaskDetail; onPlanned: (o: Plan
         value={answer}
         onChange={(e) => setAnswer(e.currentTarget.value)}
       />
-      <Group justify="flex-end">
+      <Group justify="flex-end" gap="xs">
+        <VoiceButton
+          onText={(spoken) => setAnswer((current) => appendText(current, spoken))}
+          disabled={clarify.isPending}
+        />
         <Button
           loading={clarify.isPending}
           disabled={!answer.trim()}

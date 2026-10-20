@@ -10,7 +10,9 @@ from deepquest.bot import texts
 from deepquest.bot.middlewares import DbSessionMiddleware, UserMiddleware, WhitelistMiddleware
 from deepquest.bot.routers import common, goals, onboarding, tasks, work
 from deepquest.bot.storage import SqlStorage
+from deepquest.bot.voice import VoiceMiddleware
 from deepquest.services.proofs import ProofStore
+from deepquest.services.voice import Transcriber
 
 
 def build_dispatcher(
@@ -18,6 +20,7 @@ def build_dispatcher(
     allowed_telegram_ids: Collection[int],
     agent: TaskAgent,
     proofs: ProofStore,
+    transcriber: Transcriber | None = None,
 ) -> Dispatcher:
     dispatcher = Dispatcher(
         storage=SqlStorage(sessionmaker),
@@ -31,6 +34,8 @@ def build_dispatcher(
     dispatcher.update.outer_middleware(WhitelistMiddleware(allowed_telegram_ids))
     dispatcher.update.outer_middleware(DbSessionMiddleware(sessionmaker))
     dispatcher.update.outer_middleware(UserMiddleware())
+    # Голосовое превращается в текст раньше всех роутеров и фильтров.
+    dispatcher.message.outer_middleware(VoiceMiddleware(transcriber))
     # Порядок важен: сценарии с состояниями раньше, «любой текст — новая задача» в tasks,
     # всё остальное — в common.
     dispatcher.include_routers(

@@ -18,6 +18,7 @@ from aiogram.types import (
     Message,
     PhotoSize,
     Update,
+    Voice,
 )
 from aiogram.types import User as TelegramUser
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
@@ -112,6 +113,7 @@ class BotHarness:
         sessionmaker: async_sessionmaker[AsyncSession],
         allowed_ids: Collection[int],
         agent: FakeAgent | None = None,
+        transcriber: FakeTranscriber | None = None,
     ) -> None:
         self.telegram = FakeTelegramSession()
         self.bot = Bot(
@@ -121,7 +123,9 @@ class BotHarness:
         )
         self.agent = agent or FakeAgent()
         self.proofs = ProofStore(Path(tempfile.mkdtemp(prefix="deepquest-proofs-")))
-        self.dispatcher = build_dispatcher(sessionmaker, allowed_ids, self.agent, self.proofs)
+        self.dispatcher = build_dispatcher(
+            sessionmaker, allowed_ids, self.agent, self.proofs, transcriber
+        )
         self._update_id = 0
 
     def _next_update_id(self) -> int:
@@ -138,6 +142,10 @@ class BotHarness:
     async def send_photo(self, user_id: int, file_id: str, caption: str | None = None) -> None:
         photo = [PhotoSize(file_id=file_id, file_unique_id=file_id, width=1280, height=720)]
         await self._feed_message(user_id, photo=photo, caption=caption)
+
+    async def send_voice(self, user_id: int, file_id: str = "voice-1", seconds: int = 5) -> None:
+        voice = Voice(file_id=file_id, file_unique_id=file_id, duration=seconds)
+        await self._feed_message(user_id, voice=voice)
 
     async def _feed_message(self, user_id: int, **content: Any) -> None:
         message = Message(
@@ -280,3 +288,19 @@ class FakeAgent:
 
 def verdict(kind: str = "accepted", comment: str = "Реальный шаг.") -> ValidationResult:
     return ValidationResult(verdict=kind, reason=f"Причина: {kind}", comment=comment)  # type: ignore[arg-type]
+
+
+class FakeTranscriber:
+    """Распознавание по сценарию: каждый вызов берёт следующий текст (или бросает ошибку)."""
+
+    def __init__(self, *results: str | Exception) -> None:
+        self.results = list(results)
+        self.received: list[bytes] = []
+
+    async def transcribe(self, audio: bytes) -> str:
+        self.received.append(audio)
+        assert self.results, "FakeTranscriber: no scripted transcript"
+        result = self.results.pop(0)
+        if isinstance(result, Exception):
+            raise result
+        return result

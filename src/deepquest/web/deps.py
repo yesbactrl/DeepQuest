@@ -9,6 +9,7 @@ from deepquest.agent.base import TaskAgent
 from deepquest.db.models import User
 from deepquest.services.proofs import ProofStore, TelegramDownload
 from deepquest.services.users import get_or_create_user
+from deepquest.services.voice import Transcriber
 
 
 @dataclass(frozen=True)
@@ -20,6 +21,8 @@ class WebContext:
     proofs: ProofStore
     # Бот в том же процессе: через него веб читает скриншоты, присланные в Telegram.
     telegram_download: TelegramDownload | None = None
+    # None — голосовой ввод выключен.
+    transcriber: Transcriber | None = None
 
 
 def get_context(request: Request) -> WebContext:

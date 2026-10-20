@@ -347,3 +347,14 @@ class WidgetOut(BaseModel):
     id: int
     position: int
     config: ChartConfig
+
+
+# Голос
+
+
+class VoiceStatusOut(BaseModel):
+    enabled: bool
+
+
+class TranscriptOut(BaseModel):
+    text: str

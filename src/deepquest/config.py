@@ -51,6 +51,12 @@ class Settings(AgentSettings):
     web_port: int = 8484
     web_dist_dir: Path = PROJECT_ROOT / "web" / "dist"
 
+    # Голосовой ввод: локальный Whisper. Модель (~1,5 ГБ) скачается при первом запуске.
+    voice_enabled: bool = True
+    voice_model: str = "large-v3-turbo"
+    # Пусто — язык определяется сам; с явным «ru» короткие фразы распознаются надёжнее.
+    voice_language: str = "ru"
+
     @field_validator("allowed_telegram_ids", mode="before")
     @classmethod
     def _split_ids(cls, value: object) -> object:
@@ -68,3 +74,7 @@ class Settings(AgentSettings):
     @property
     def database_path(self) -> Path:
         return self.data_dir / "deepquest.db"
+
+    @property
+    def models_dir(self) -> Path:
+        return self.data_dir / "models"

@@ -2,6 +2,7 @@ import {
   Alert,
   Anchor,
   Button,
+  Group,
   Image,
   Paper,
   SimpleGrid,
@@ -17,6 +18,7 @@ import { useState } from "react";
 import { type TaskDetail, useDispute } from "../../api/tasks";
 import { formatMinutes } from "../../lib/format";
 import { VERDICT, formatMult, signedXp } from "../../lib/tasks";
+import { VoiceButton, appendText } from "../VoiceButton";
 
 function Breakdown({ task }: { task: TaskDetail }) {
   const b = task.breakdown;
@@ -103,24 +105,31 @@ function DisputeForm({ task }: { task: TaskDetail }) {
           {dispute.error.message}
         </Alert>
       )}
-      <Button
-        variant="light"
-        color="orange"
-        loading={dispute.isPending}
-        disabled={!argument.trim()}
-        onClick={() =>
-          dispute.mutate(argument, {
-            onSuccess: (result) =>
-              notifications.show({
-                color: "orange",
-                title: "Пересмотрено",
-                message: `${VERDICT[result.task.validation!.verdict].title} · ${signedXp(result.xp_delta)}`,
-              }),
-          })
-        }
-      >
-        Оспорить
-      </Button>
+      <Group gap="xs" wrap="nowrap">
+        <VoiceButton
+          onText={(spoken) => setArgument((current) => appendText(current, spoken))}
+          disabled={dispute.isPending}
+        />
+        <Button
+          style={{ flex: 1 }}
+          variant="light"
+          color="orange"
+          loading={dispute.isPending}
+          disabled={!argument.trim()}
+          onClick={() =>
+            dispute.mutate(argument, {
+              onSuccess: (result) =>
+                notifications.show({
+                  color: "orange",
+                  title: "Пересмотрено",
+                  message: `${VERDICT[result.task.validation!.verdict].title} · ${signedXp(result.xp_delta)}`,
+                }),
+            })
+          }
+        >
+          Оспорить
+        </Button>
+      </Group>
     </Stack>
   );
 }

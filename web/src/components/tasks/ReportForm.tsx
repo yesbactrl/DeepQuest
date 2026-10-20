@@ -18,6 +18,7 @@ import { useEffect, useMemo, useState, type ClipboardEvent } from "react";
 import { type TaskDetail, useReport } from "../../api/tasks";
 import { formatMinutes } from "../../lib/format";
 import { VERDICT, signedXp } from "../../lib/tasks";
+import { VoiceButton, appendText } from "../VoiceButton";
 
 const MAX_FILES = 5;
 
@@ -104,18 +105,24 @@ export function ReportForm({ task }: { task: TaskDetail }) {
       />
       <Previews files={files} onRemove={(i) => setFiles((current) => current.filter((_, j) => j !== i))} />
       <Group justify="space-between">
-        <FileButton onChange={addFiles} accept="image/png,image/jpeg,image/gif,image/webp" multiple>
-          {(props) => (
-            <Button
-              {...props}
-              variant="default"
-              leftSection={<IconPhotoPlus size={16} />}
-              disabled={files.length >= MAX_FILES || report.isPending}
-            >
-              Скриншот
-            </Button>
-          )}
-        </FileButton>
+        <Group gap="xs">
+          <FileButton onChange={addFiles} accept="image/png,image/jpeg,image/gif,image/webp" multiple>
+            {(props) => (
+              <Button
+                {...props}
+                variant="default"
+                leftSection={<IconPhotoPlus size={16} />}
+                disabled={files.length >= MAX_FILES || report.isPending}
+              >
+                Скриншот
+              </Button>
+            )}
+          </FileButton>
+          <VoiceButton
+            onText={(spoken) => setText((current) => appendText(current, spoken))}
+            disabled={report.isPending}
+          />
+        </Group>
         <Button onClick={submit} loading={report.isPending} disabled={!text.trim() && files.length === 0}>
           Сдать отчёт
         </Button>

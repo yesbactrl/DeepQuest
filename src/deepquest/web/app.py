@@ -10,8 +10,9 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from deepquest.agent.base import TaskAgent
 from deepquest.services.proofs import ProofStore, TelegramDownload
+from deepquest.services.voice import Transcriber
 from deepquest.web.deps import WebContext
-from deepquest.web.routes import dashboard, goals, me, tasks
+from deepquest.web.routes import dashboard, goals, me, tasks, voice
 from deepquest.web.security import ALLOWED_HOSTS, CsrfHeaderMiddleware
 
 NOT_BUILT = """<!doctype html><meta charset="utf-8"><title>DeepQuest</title>
@@ -29,6 +30,7 @@ def create_app(
     agent: TaskAgent,
     proofs: ProofStore,
     telegram_download: TelegramDownload | None = None,
+    transcriber: Transcriber | None = None,
 ) -> FastAPI:
     app = FastAPI(
         title="DeepQuest",
@@ -37,7 +39,7 @@ def create_app(
         redoc_url=None,
     )
     app.state.context = WebContext(
-        sessionmaker, owner_telegram_id, agent, proofs, telegram_download
+        sessionmaker, owner_telegram_id, agent, proofs, telegram_download, transcriber
     )
     app.add_middleware(CsrfHeaderMiddleware)
     # Последним добавленный middleware срабатывает первым: Host проверяем раньше всего.
@@ -47,6 +49,7 @@ def create_app(
     app.include_router(goals.router)
     app.include_router(tasks.router)
     app.include_router(dashboard.router)
+    app.include_router(voice.router)
 
     @app.api_route("/api/{path:path}", methods=["GET", "POST", "PATCH", "PUT", "DELETE"])
     async def unknown_api(path: str) -> None:

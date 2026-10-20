@@ -24,6 +24,7 @@ from deepquest.config import Settings
 from deepquest.db.migrate import upgrade_database
 from deepquest.db.session import create_engine, create_sessionmaker
 from deepquest.services.proofs import ProofStore
+from deepquest.services.voice import WhisperTranscriber
 from deepquest.web.app import create_app
 
 logger = logging.getLogger("deepquest")
@@ -60,7 +61,17 @@ async def run(settings: Settings) -> None:
     logger.info("Агент: %s", agent.description)
     # Одно хранилище пруфов на бота и веб: отчёт из одного можно перепроверить из другого.
     proofs = ProofStore(settings.data_dir / "proofs")
-    dispatcher = build_dispatcher(sessionmaker, settings.allowed_telegram_ids, agent.agent, proofs)
+    transcriber = None
+    warm_up = None
+    if settings.voice_enabled:
+        transcriber = WhisperTranscriber(
+            settings.voice_model, settings.voice_language or None, settings.models_dir
+        )
+        logger.info("Голос: %s", transcriber.description)
+        warm_up = asyncio.create_task(transcriber.warm_up(), name="voice-warm-up")
+    dispatcher = build_dispatcher(
+        sessionmaker, settings.allowed_telegram_ids, agent.agent, proofs, transcriber
+    )
 
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
@@ -78,6 +89,7 @@ async def run(settings: Settings) -> None:
             agent.agent,
             proofs,
             telegram_download(bot),
+            transcriber,
         )
         server = _WebServer(
             uvicorn.Config(app, host=settings.web_host, port=settings.web_port, log_level="info")
@@ -92,6 +104,8 @@ async def run(settings: Settings) -> None:
         stopper.cancel()
     finally:
         logger.info("Останавливаюсь…")
+        if warm_up is not None:
+            warm_up.cancel()
         if server is not None:
             server.should_exit = True
         with contextlib.suppress(RuntimeError):  # поллинг уже остановлен

@@ -5,6 +5,7 @@ import { useState, type KeyboardEvent } from "react";
 
 import { type PlanOutcome, usePlan } from "../../api/tasks";
 import { plural } from "../../lib/format";
+import { VoiceButton, appendText } from "../VoiceButton";
 
 // Поле «что сделать?»: агент превращает мысль в черновики задач или задаёт вопрос.
 export function PlanBox({ onPlanned }: { onPlanned: (outcome: PlanOutcome) => void }) {
@@ -47,7 +48,7 @@ export function PlanBox({ onPlanned }: { onPlanned: (outcome: PlanOutcome) => vo
     <Paper withBorder p="md">
       <Stack gap="xs">
         <Textarea
-          placeholder="Что хочешь сделать? Пиши как есть, можно несколько дел сразу"
+          placeholder="Что хочешь сделать? Пиши или надиктуй как есть, можно несколько дел сразу"
           autosize
           minRows={2}
           maxRows={8}
@@ -62,14 +63,20 @@ export function PlanBox({ onPlanned }: { onPlanned: (outcome: PlanOutcome) => vo
               ? "Агент оформляет задачу — обычно 5–10 секунд"
               : "⌘ + Enter — отправить агенту"}
           </Text>
-          <Button
-            leftSection={<IconSparkles size={16} />}
-            onClick={submit}
-            loading={plan.isPending}
-            disabled={!text.trim()}
-          >
-            Оформить
-          </Button>
+          <Group gap="xs" wrap="nowrap">
+            <VoiceButton
+              onText={(spoken) => setText((current) => appendText(current, spoken))}
+              disabled={plan.isPending}
+            />
+            <Button
+              leftSection={<IconSparkles size={16} />}
+              onClick={submit}
+              loading={plan.isPending}
+              disabled={!text.trim()}
+            >
+              Оформить
+            </Button>
+          </Group>
         </Group>
       </Stack>
     </Paper>
