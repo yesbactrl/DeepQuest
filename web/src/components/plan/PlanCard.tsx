@@ -5,7 +5,7 @@ import { IconCalendarEvent, IconCheck, IconDots, IconPlayerPlay } from "@tabler/
 import { useSchedule } from "../../api/plan";
 import type { Task } from "../../api/tasks";
 import { formatMinutes } from "../../lib/format";
-import { ACTIVE_STATUSES, planDayLabel, scheduleOptions } from "../../lib/plan";
+import { ACTIVE_STATUSES, scheduleOptions, shortDate } from "../../lib/plan";
 import { taskXp } from "../../lib/tasks";
 
 export const DRAG_TYPE = "application/x-deepquest-task";
@@ -86,7 +86,7 @@ export function PlanCard({ task, today, onOpen }: { task: Task; today: string; o
         </Group>
         {task.planned_for && task.planned_for < today && (
           <Text size="xs" c="orange">
-            было на {planDayLabel(task.planned_for, today).toLowerCase()}
+            было на {shortDate(task.planned_for)}
           </Text>
         )}
       </Stack>

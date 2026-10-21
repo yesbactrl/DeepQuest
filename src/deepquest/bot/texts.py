@@ -598,6 +598,11 @@ def diary_entry(entry: DiaryEntry, *, agent_failed: bool) -> str:
 
 # План на сегодня
 
+WEEKDAY_NAMES = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"]
+MONTHS_GENITIVE = [
+    "января", "февраля", "марта", "апреля", "мая", "июня",
+    "июля", "августа", "сентября", "октября", "ноября", "декабря",
+]  # fmt: skip
 TODAY_EMPTY = (
     "<b>Сегодня</b>\n\nНа сегодня ничего не запланировано. Распредели задачи по дням на "
     "странице «План» в вебе или возьми что-нибудь из /backlog."
@@ -623,7 +628,11 @@ def today_plan(day: PlanDay, overdue: list[Task], norm_min: int) -> str:
     finished = [task for task in day.tasks if task.status in FINISHED]
     if not day.tasks and not overdue:
         return TODAY_EMPTY
-    header = f"<b>Сегодня</b> · ~{format_minutes(day.load_min)} из {format_minutes(norm_min)} нормы"
+    header = (
+        f"<b>Сегодня, {WEEKDAY_NAMES[day.day.weekday()]} {day.day.day} "
+        f"{MONTHS_GENITIVE[day.day.month - 1]}</b> · ~{format_minutes(day.load_min)} "
+        f"из {format_minutes(norm_min)} нормы"
+    )
     if day.load_xp:
         header += f" · +{day.load_xp} XP"
     lines = [header, ""]

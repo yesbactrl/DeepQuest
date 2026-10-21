@@ -6,16 +6,21 @@ export function addDays(day: string, n: number): string {
   return date.toISOString().slice(0, 10);
 }
 
-// «Сегодня», «Завтра» или «пт, 24 окт».
-export function planDayLabel(day: string, today: string): string {
-  if (day === today) return "Сегодня";
-  if (day === addDays(today, 1)) return "Завтра";
+// «пт, 24 окт.»
+export function shortDate(day: string): string {
   return new Date(`${day}T12:00:00Z`).toLocaleDateString("ru-RU", {
     weekday: "short",
     day: "numeric",
     month: "short",
     timeZone: "UTC",
   });
+}
+
+// «Сегодня · вт, 21 окт.», «Завтра · ср, 22 окт.» или просто «пт, 24 окт.».
+export function planDayLabel(day: string, today: string): string {
+  if (day === today) return `Сегодня · ${shortDate(day)}`;
+  if (day === addDays(today, 1)) return `Завтра · ${shortDate(day)}`;
+  return shortDate(day);
 }
 
 export function isWeekend(day: string): boolean {
@@ -31,9 +36,7 @@ export function scheduleOptions(today: string, current: string | null): { value:
     { value: "", label: "Когда-нибудь" },
     ...days.map((day) => ({
       value: day,
-      label: day === today || day === addDays(today, 1)
-        ? planDayLabel(day, today)
-        : planDayLabel(day, today).replace(/^./, (c) => c.toUpperCase()),
+      label: planDayLabel(day, today).replace(/^./, (c) => c.toUpperCase()),
     })),
   ];
 }

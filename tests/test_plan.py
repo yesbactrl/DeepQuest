@@ -177,7 +177,11 @@ async def test_bot_today(sessionmaker: async_sessionmaker[AsyncSession], seed: S
     await harness.send(ME, "/today")
 
     text = harness.last_text
-    assert text.startswith("<b>Сегодня</b> · ~2 ч 30 мин из 2 ч нормы · +168 XP")
+    weekday = texts.WEEKDAY_NAMES[seed.today.weekday()]
+    month = texts.MONTHS_GENITIVE[seed.today.month - 1]
+    assert text.startswith(
+        f"<b>Сегодня, {weekday} {seed.today.day} {month}</b> · ~2 ч 30 мин из 2 ч нормы · +168 XP"
+    )
     assert "1. Лендинг" in text and "2. ⏱ Чекап" in text
     assert "✓ <s>Зал</s>" in text
     assert "<b>Со вчера и раньше</b>\n3. Стоматолог" in text
