@@ -119,6 +119,7 @@ async def _detail(session: AsyncSession, task: Task) -> TaskDetailOut:
             comment=latest.comment,
             is_dispute=latest.is_dispute,
             dispute_text=latest.dispute_text,
+            self_check=latest.self_check,
             created_at=latest.created_at,
         )
         if latest
@@ -354,6 +355,9 @@ async def report(
     files: Annotated[list[UploadFile] | None, File()] = None,
     # Сколько ушло на задачу; не указано — по таймеру, а без таймера — по оценке.
     spent_min: Annotated[int | None, Form(ge=1, le=24 * 60)] = None,
+    # Засчитать самому, без агента: тогда отчёт можно не писать. По умолчанию False:
+    # отсутствующее булево поле формы FastAPI читает как False, как невыбранный чекбокс.
+    self_check: Annotated[bool, Form()] = False,
 ) -> CheckOut:
     task = await _task(session, user, task_id)
     if task.status != TaskStatus.AWAITING_REPORT:
@@ -362,7 +366,7 @@ async def report(
     if len(uploads) > MAX_FILES:
         raise HTTPException(422, f"Не больше {MAX_FILES} файлов.")
     text = text.strip()
-    if not text and not uploads:
+    if not self_check and not text and not uploads:
         raise HTTPException(422, "Напиши, что сделал, или приложи скриншот.")
 
     saved = []
@@ -380,11 +384,16 @@ async def report(
         )
 
     report_input = ReportInput(text=text, links=extract_links(text), files=saved)
-    images = await context.proofs.images(saved, context.telegram_download)
     try:
-        outcome = await validation.submit_report(
-            session, context.agent, user, task, report_input, images, _now(), spent_min
-        )
+        if not self_check:
+            images = await context.proofs.images(saved, context.telegram_download)
+            outcome = await validation.submit_report(
+                session, context.agent, user, task, report_input, images, _now(), spent_min
+            )
+        else:
+            outcome = await validation.accept_without_check(
+                session, user, task, report_input, _now(), spent_min
+            )
     except ReportError:
         raise _conflict() from None
     return await _check_out(session, user, outcome)

@@ -48,6 +48,8 @@ export interface TaskDetail extends Task {
     reason: string;
     comment: string;
     is_dispute: boolean;
+    // Засчитано самим пользователем, без агента.
+    self_check: boolean;
     dispute_text: string | null;
     created_at: string;
   } | null;
@@ -195,9 +197,21 @@ export function useStart(id: number) {
 
 export function useReport(id: number) {
   return useTaskMutation(
-    ({ text, files, spentMin }: { text: string; files: File[]; spentMin: number | null }) => {
+    ({
+      text,
+      files,
+      spentMin,
+      selfCheck = false,
+    }: {
+      text: string;
+      files: File[];
+      spentMin: number | null;
+      // Засчитать самому, без агента: отчёт тогда необязателен.
+      selfCheck?: boolean;
+    }) => {
       const form = new FormData();
       form.set("text", text);
+      if (selfCheck) form.set("self_check", "true");
       // Сколько ушло на задачу; не указано — по таймеру, а без таймера — по оценке.
       if (spentMin !== null) form.set("spent_min", String(spentMin));
       files.forEach((file) => form.append("files", file));

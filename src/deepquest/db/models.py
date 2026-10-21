@@ -215,7 +215,7 @@ class ValidationVerdict(StrEnum):
 
 
 class Validation(Base):
-    """Вердикт агента по отчёту. Оспаривание добавляет новую запись, старую не трогает."""
+    """Вердикт по отчёту. Оспаривание добавляет новую запись, старую не трогает."""
 
     __tablename__ = "validations"
 
@@ -230,6 +230,8 @@ class Validation(Base):
     comment: Mapped[str] = mapped_column(Text)
     is_dispute: Mapped[bool]
     dispute_text: Mapped[str | None] = mapped_column(Text)
+    # Пользователь засчитал задачу сам, без агента: оспаривать тут нечего.
+    self_check: Mapped[bool] = mapped_column(default=False, server_default=text("0"))
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 

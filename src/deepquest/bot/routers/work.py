@@ -22,7 +22,7 @@ from deepquest.services import tasks, timer, validation
 from deepquest.services.days import local_time
 from deepquest.services.proofs import ProofStore
 from deepquest.services.timer import TimerError
-from deepquest.services.validation import ReportError, ValidationOutcome
+from deepquest.services.validation import ReportError, ReportInput, ValidationOutcome
 
 
 class ReportForm(StatesGroup):
@@ -91,7 +91,9 @@ async def _ask_report(
     total = await timer.total_minutes(session, task, at)
     await state.set_state(ReportForm.waiting)
     await state.set_data({"task_id": task.id})
-    await edit_or_send(bot, chat_id, message_id, texts.ask_report(task, total))
+    await edit_or_send(
+        bot, chat_id, message_id, texts.ask_report(task, total), keyboards.ask_report(task)
+    )
 
 
 async def start_requested(
@@ -241,6 +243,30 @@ async def report_received(
     await _show_outcome(bot, message.chat.id, placeholder.message_id, session, outcome)
 
 
+async def self_accept_requested(
+    callback: CallbackQuery,
+    callback_data: TaskCb,
+    bot: Bot,
+    state: FSMContext,
+    session: AsyncSession,
+    user: User,
+) -> None:
+    task = await _task_or_alert(callback, session, user, callback_data.task_id)
+    if task is None:
+        return
+    try:
+        outcome = await validation.accept_without_check(
+            session, user, task, ReportInput(text=""), _now()
+        )
+    except ReportError:
+        await callback.answer(texts.STALE_BUTTON)
+        return
+    await callback.answer()
+    if (await state.get_data()).get("task_id") == task.id:
+        await state.clear()
+    await _show_outcome(bot, callback.from_user.id, _message_id(callback), session, outcome)
+
+
 async def recheck_requested(
     callback: CallbackQuery,
     callback_data: TaskCb,
@@ -343,6 +369,7 @@ def create_router() -> Router:
     router.callback_query.register(start_requested, on(TaskAction.START))
     router.callback_query.register(pause_requested, on(TaskAction.PAUSE))
     router.callback_query.register(done_requested, on(TaskAction.DONE))
+    router.callback_query.register(self_accept_requested, on(TaskAction.SELF_ACCEPT))
     router.callback_query.register(recheck_requested, on(TaskAction.RECHECK))
     router.callback_query.register(why_requested, on(TaskAction.WHY))
     router.callback_query.register(dispute_requested, on(TaskAction.DISPUTE))

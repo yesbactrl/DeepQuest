@@ -363,6 +363,7 @@ RESUME_BUTTON = "▶️ Продолжить"
 PAUSE_BUTTON = "⏸ Пауза"
 DONE_BUTTON = "✅ Готово"
 WHY_BUTTON = "❓ Почему столько?"
+SELF_ACCEPT_BUTTON = "✅ Засчитать без проверки"
 DISPUTE_BUTTON = "⚖️ Оспорить"
 RECHECK_BUTTON = "🔄 Проверить ещё раз"
 
@@ -428,7 +429,8 @@ def ask_report(task: Task, total_min: int) -> str:
         lines = [f"✅ <b>{escape(task.title)}</b>: {format_minutes(total_min)} по таймеру.", ""]
     lines.append(
         "Что получилось? Напиши коротко: что сделал и что понял. Приложи пруф — скрин или "
-        "ссылку. Без пруфа засчитаю «на честном слове» с ×0.8."
+        "ссылку. Без пруфа засчитаю «на честном слове» с ×0.8. Не хочешь отчёт — "
+        "«Засчитать без проверки»."
     )
     return "\n".join(lines)
 
@@ -460,6 +462,8 @@ def xp_split(amount: int, stat: str | None, skill: str | None) -> str:
 def verdict_result(outcome: ValidationOutcome, *, disputed: bool = False) -> str:
     assert outcome.validation is not None
     header = VERDICT_HEADERS[outcome.validation.verdict.value]
+    if outcome.validation.self_check:
+        header = "✅ Засчитано без проверки"
     if disputed:
         header = f"⚖️ Пересмотрел. {header}"
     stat, skill = stat_and_skill(outcome.task)
@@ -467,7 +471,9 @@ def verdict_result(outcome: ValidationOutcome, *, disputed: bool = False) -> str
     weak = outcome.breakdown.weak_mult if outcome.breakdown else 1.0
     if weak > 1 and outcome.xp_delta > 0 and not disputed and stat is not None:
         lines.append(f"💪 «{escape(stat)}» — самый слабый стат: {format_mult(weak)} к XP")
-    lines += ["", escape(outcome.validation.comment), "", f"Всего: {outcome.total_xp} XP"]
+    if outcome.validation.comment:
+        lines += ["", escape(outcome.validation.comment)]
+    lines += ["", f"Всего: {outcome.total_xp} XP"]
     return "\n".join(lines)
 
 

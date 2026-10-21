@@ -183,6 +183,7 @@ def skip_why() -> InlineKeyboardMarkup:
 
 
 class TaskAction(StrEnum):
+    SELF_ACCEPT = "self"
     SAVE = "save"
     EDIT = "edit"
     CANCEL = "cancel"
@@ -258,6 +259,13 @@ def timer_paused(task: Task) -> InlineKeyboardMarkup:
     _task_button(builder, texts.DONE_BUTTON, TaskAction.DONE, task)
     builder.button(text=texts.BACKLOG_BUTTON, callback_data=TaskCb(action=TaskAction.BACKLOG))
     builder.adjust(2, 1)
+    return builder.as_markup()
+
+
+def ask_report(task: Task) -> InlineKeyboardMarkup:
+    """Под просьбой об отчёте: можно засчитать задачу самому, без агента."""
+    builder = InlineKeyboardBuilder()
+    _task_button(builder, texts.SELF_ACCEPT_BUTTON, TaskAction.SELF_ACCEPT, task)
     return builder.as_markup()
 
 

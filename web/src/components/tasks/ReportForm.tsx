@@ -71,16 +71,16 @@ export function ReportForm({ task }: { task: TaskDetail }) {
     }
   }
 
-  function submit() {
+  function submit(selfCheck: boolean) {
     report.mutate(
-      { text, files, spentMin: typeof spent === "number" && spent >= 1 ? spent : null },
+      { text, files, spentMin: typeof spent === "number" && spent >= 1 ? spent : null, selfCheck },
       {
         onSuccess: (result) => {
           if (result.agent_failed) return;
           const verdict = result.task.validation?.verdict;
           notifications.show({
             color: verdict ? VERDICT[verdict].color : "teal",
-            title: verdict ? VERDICT[verdict].title : "Проверено",
+            title: selfCheck ? "Засчитано без проверки" : verdict ? VERDICT[verdict].title : "Проверено",
             message: awardMessage(result),
             style: { whiteSpace: "pre-line" },
           });
@@ -139,12 +139,27 @@ export function ReportForm({ task }: { task: TaskDetail }) {
             disabled={report.isPending}
           />
         </Group>
-        <Button onClick={submit} loading={report.isPending} disabled={!text.trim() && files.length === 0}>
-          Сдать отчёт
-        </Button>
+        <Group gap="xs">
+          {/* Без агента: задача засчитывается сразу, отчёт и пруф необязательны. */}
+          <Button
+            variant="default"
+            onClick={() => submit(true)}
+            loading={report.isPending && report.variables?.selfCheck === true}
+            disabled={report.isPending}
+          >
+            Засчитать без проверки
+          </Button>
+          <Button
+            onClick={() => submit(false)}
+            loading={report.isPending && !report.variables?.selfCheck}
+            disabled={(!text.trim() && files.length === 0) || report.isPending}
+          >
+            Сдать на проверку
+          </Button>
+        </Group>
       </Group>
       <Text size="xs" c="dimmed">
-        {report.isPending
+        {report.isPending && !report.variables?.selfCheck
           ? "Агент проверяет отчёт — обычно 5–10 секунд"
           : files.length === 0 && !hasLink
             ? "Без скриншота или ссылки отчёт засчитается «на честном слове» с ×0.8."

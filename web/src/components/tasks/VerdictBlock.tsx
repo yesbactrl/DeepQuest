@@ -90,7 +90,10 @@ function Breakdown({ task }: { task: TaskDetail }) {
       />,
     ],
     ["Ценность задачи", `${formatMult(b.value_mult)}${task.mult_reason ? ` — ${task.mult_reason}` : ""}`],
-    ["Проверка отчёта", `${VERDICT[b.verdict].label} ${formatMult(b.validation_mult)}`],
+    [
+      "Проверка отчёта",
+      `${task.validation?.self_check ? "без агента" : VERDICT[b.verdict].label} ${formatMult(b.validation_mult)}`,
+    ],
     ["Пруф", `${b.honor_mode ? "на честном слове" : "есть"} ${formatMult(b.proof_mult)}`],
     ...(b.weak_mult !== 1
       ? [["Самый слабый стат", `${formatMult(b.weak_mult)} — бонус отстающей цели`] as [string, ReactNode]]
@@ -208,9 +211,9 @@ export function VerdictBlock({ task }: { task: TaskDetail }) {
         <Stack gap={6}>
           <Text fw={700} c={verdict.color}>
             {validation.is_dispute ? "Пересмотрено. " : ""}
-            {verdict.title} · {task.xp} XP
+            {validation.self_check ? "Засчитано без проверки" : verdict.title} · {task.xp} XP
           </Text>
-          <Text>{validation.comment}</Text>
+          {validation.comment && <Text>{validation.comment}</Text>}
           <Text size="sm" c="dimmed">
             {validation.reason}
           </Text>

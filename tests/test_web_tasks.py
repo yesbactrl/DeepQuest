@@ -406,3 +406,39 @@ async def test_change_time_needs_done_task(web: Web) -> None:
     assert response.status_code == 409
     bad = await web.client.post(f"/api/tasks/{task['id']}/time", json={"spent_min": 0})
     assert bad.status_code == 422
+
+
+# Без агента
+
+
+async def test_self_accept_without_agent(web: Web) -> None:
+    task = await _open_task(web, minutes=60, mult=1.5)
+    await web.client.post(f"/api/tasks/{task['id']}/done")
+
+    result = (
+        await web.client.post(f"/api/tasks/{task['id']}/report", data={"self_check": "true"})
+    ).json()
+
+    assert web.agent.reports == []
+    # Без отчёта и пруфа: 60 мин по оценке × 1.5 × 1 × 0.8.
+    assert result["xp_delta"] == 72
+    detail = result["task"]
+    assert detail["status"] == "done"
+    assert detail["validation"]["self_check"] is True
+    assert detail["validation"]["verdict"] == "accepted"
+    assert detail["can_dispute"] is False
+
+
+async def test_self_accept_with_proof_has_no_honor_penalty(web: Web) -> None:
+    task = await _open_task(web, minutes=60, mult=1.0)
+    await web.client.post(f"/api/tasks/{task['id']}/done")
+
+    result = (
+        await web.client.post(
+            f"/api/tasks/{task['id']}/report",
+            data={"self_check": "true", "text": "Готово: https://x.io"},
+        )
+    ).json()
+
+    assert result["xp_delta"] == 60
+    assert web.agent.reports == []

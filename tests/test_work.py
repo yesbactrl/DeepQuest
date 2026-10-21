@@ -5,6 +5,7 @@ import pytest
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from deepquest.agent.schemas import PlanResult
 from deepquest.bot import texts
 from deepquest.db.models import (
     Task,
@@ -411,3 +412,24 @@ async def test_logical_date_of_award_uses_user_timezone(
             session, user, task, breakdown, datetime(2026, 10, 31, 22, 0, tzinfo=UTC)
         )
         assert (event.logical_date, event.season) == (date(2026, 11, 1), "2026-11")
+
+
+async def test_self_accept_in_bot(
+    sessionmaker: async_sessionmaker[AsyncSession], seed: Seed
+) -> None:
+    harness = BotHarness(sessionmaker, allowed_ids=[ME])
+    await _start_first_from_backlog(harness)
+    await _rewind_timer(sessionmaker, 60)
+    await harness.tap(ME, texts.DONE_BUTTON)
+
+    await harness.tap(ME, texts.SELF_ACCEPT_BUTTON)
+
+    assert harness.agent.reports == []
+    # 60 мин × 1.5 × 1 × 0.8 (без пруфа)
+    assert harness.last_text.startswith("✅ Засчитано без проверки · +72 XP общий")
+    assert texts.DISPUTE_BUTTON not in str(harness.screens[-1].reply_markup)
+    assert (await _task(sessionmaker, seed.first.id)).status == TaskStatus.DONE
+    # Отчёт после этого уже не ждём: обычный текст — снова новая мысль.
+    harness.agent.plans.append(PlanResult(clarify_question=None, tasks=[]))
+    await harness.send(ME, "новая мысль")
+    assert harness.agent.calls[-1][0] == "plan_task"

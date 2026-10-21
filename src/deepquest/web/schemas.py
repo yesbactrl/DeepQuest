@@ -182,6 +182,8 @@ class ValidationOut(BaseModel):
     comment: str
     is_dispute: bool
     dispute_text: str | None
+    # Засчитано самим пользователем, без агента.
+    self_check: bool
     created_at: datetime
 
 
