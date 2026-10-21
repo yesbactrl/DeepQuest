@@ -325,3 +325,84 @@ async def test_upload_needs_csrf_header(web: Web) -> None:
     assert response.status_code == 403
     status = (await web.client.get(f"/api/tasks/{task['id']}")).json()["status"]
     assert status == TaskStatus.OPEN.value
+
+
+# Время без таймера
+
+
+async def _entries(sessionmaker: async_sessionmaker[AsyncSession]) -> list[tuple[int, str | None]]:
+    async with sessionmaker() as session:
+        entries = await session.scalars(select(TimeEntry).order_by(TimeEntry.started_at))
+        return [
+            (int((e.ended_at - e.started_at).total_seconds() // 60), e.stop_reason)
+            for e in entries
+            if e.ended_at is not None
+        ]
+
+
+async def test_report_without_timer_counts_estimate(
+    web: Web, sessionmaker: async_sessionmaker[AsyncSession]
+) -> None:
+    task = await _open_task(web, minutes=60, mult=1.5)
+    web.agent.validations.append(verdict())
+    await web.client.post(f"/api/tasks/{task['id']}/done")
+
+    result = (
+        await web.client.post(f"/api/tasks/{task['id']}/report", data={"text": "https://x.io"})
+    ).json()
+
+    assert web.agent.reports[0].actual_min == 60
+    assert result["xp_delta"] == 90
+    assert await _entries(sessionmaker) == [(60, "logged")]
+
+
+async def test_report_with_spent_time(
+    web: Web, sessionmaker: async_sessionmaker[AsyncSession]
+) -> None:
+    task = await _open_task(web, minutes=60, mult=1.0)
+    web.agent.validations.append(verdict())
+    await web.client.post(f"/api/tasks/{task['id']}/start")
+    await _rewind(sessionmaker, 30)
+    await web.client.post(f"/api/tasks/{task['id']}/done")
+
+    # По таймеру 30 минут, а на деле ушло 45: дописываем недостающие 15.
+    result = (
+        await web.client.post(
+            f"/api/tasks/{task['id']}/report", data={"text": "https://x.io", "spent_min": "45"}
+        )
+    ).json()
+
+    assert web.agent.reports[0].actual_min == 45
+    assert result["xp_delta"] == 45
+    assert await _entries(sessionmaker) == [(30, "done"), (15, "logged")]
+
+
+async def test_change_time_recounts_xp(
+    web: Web, sessionmaker: async_sessionmaker[AsyncSession]
+) -> None:
+    task = await _open_task(web, minutes=60, mult=1.0)
+    web.agent.validations.append(verdict("partial"))
+    await web.client.post(f"/api/tasks/{task['id']}/done")
+    await web.client.post(f"/api/tasks/{task['id']}/report", data={"text": "Сделал"})
+    # 60 мин × 0.7 × 0.8 = 34
+
+    more = (await web.client.post(f"/api/tasks/{task['id']}/time", json={"spent_min": 90})).json()
+    # 90 × 0.7 × 0.8 = 50: поправка +16, агента заново не спрашиваем.
+    assert (more["xp_delta"], more["task"]["xp"], more["task"]["spent_min"]) == (16, 50, 90)
+    assert more["task"]["breakdown"]["actual_min"] == 90
+    assert len(web.agent.reports) == 1
+
+    less = (await web.client.post(f"/api/tasks/{task['id']}/time", json={"spent_min": 20})).json()
+    assert (less["xp_delta"], less["task"]["xp"]) == (-39, 11)
+    assert await _entries(sessionmaker) == [(20, "logged")]
+
+
+async def test_change_time_needs_done_task(web: Web) -> None:
+    task = await _open_task(web)
+    response = await web.client.post(f"/api/tasks/{task['id']}/time", json={"spent_min": 30})
+    assert response.status_code == 409
+    await web.client.post(f"/api/tasks/{task['id']}/start")
+    response = await web.client.post(f"/api/tasks/{task['id']}/time", json={"spent_min": 30})
+    assert response.status_code == 409
+    bad = await web.client.post(f"/api/tasks/{task['id']}/time", json={"spent_min": 0})
+    assert bad.status_code == 422

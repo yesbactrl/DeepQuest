@@ -4,6 +4,7 @@ import {
   Button,
   Group,
   Image,
+  NumberInput,
   Paper,
   SimpleGrid,
   Stack,
@@ -13,26 +14,87 @@ import {
   Title,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
-import { type TaskDetail, useDispute } from "../../api/tasks";
+import { type TaskDetail, useChangeTime, useDispute } from "../../api/tasks";
 import { formatMinutes } from "../../lib/format";
 import { VERDICT, formatMult, xpSplit } from "../../lib/tasks";
 import { VoiceButton, appendText } from "../VoiceButton";
 
+// Сколько ушло на задачу: можно поправить, XP пересчитается тем же вердиктом.
+function TimeValue({ task, text }: { task: TaskDetail; text: string }) {
+  const change = useChangeTime(task.id);
+  const [editing, setEditing] = useState(false);
+  const [minutes, setMinutes] = useState<number | string>(task.spent_min);
+  if (!editing) {
+    return (
+      <Group gap="xs" wrap="nowrap">
+        <span>{text}</span>
+        <Button size="compact-xs" variant="subtle" onClick={() => setEditing(true)}>
+          Изменить
+        </Button>
+      </Group>
+    );
+  }
+  const save = () => {
+    if (typeof minutes !== "number" || minutes < 1) return;
+    change.mutate(minutes, {
+      onSuccess: (result) => {
+        setEditing(false);
+        notifications.show({
+          color: "teal",
+          message: `Время ${formatMinutes(minutes)} · ${xpSplit(result.xp_delta, result.stat, result.skill)}`,
+        });
+      },
+      onError: (error) => notifications.show({ color: "red", message: error.message }),
+    });
+  };
+  return (
+    <Group gap="xs" wrap="nowrap">
+      <NumberInput
+        size="xs"
+        w={110}
+        min={1}
+        max={24 * 60}
+        step={15}
+        allowDecimal={false}
+        suffix=" мин"
+        value={minutes}
+        onChange={setMinutes}
+        aria-label="Сколько ушло, минут"
+        data-autofocus
+      />
+      <Button size="xs" loading={change.isPending} onClick={save}>
+        Сохранить
+      </Button>
+      <Button size="xs" variant="subtle" color="gray" onClick={() => setEditing(false)}>
+        Отмена
+      </Button>
+    </Group>
+  );
+}
+
 function Breakdown({ task }: { task: TaskDetail }) {
   const b = task.breakdown;
   if (!b) return null;
-  const rows = [
+  const rows: [string, ReactNode][] = [
     [
       "Время",
-      formatMinutes(b.counted_min) +
-        (b.capped ? ` (по таймеру ${formatMinutes(b.actual_min)}, засчитываю не больше двух оценок)` : ""),
+      <TimeValue
+        key="time"
+        task={task}
+        text={
+          formatMinutes(b.counted_min) +
+          (b.capped ? ` (ушло ${formatMinutes(b.actual_min)}, засчитываю не больше двух оценок)` : "")
+        }
+      />,
     ],
     ["Ценность задачи", `${formatMult(b.value_mult)}${task.mult_reason ? ` — ${task.mult_reason}` : ""}`],
     ["Проверка отчёта", `${VERDICT[b.verdict].label} ${formatMult(b.validation_mult)}`],
     ["Пруф", `${b.honor_mode ? "на честном слове" : "есть"} ${formatMult(b.proof_mult)}`],
-    ...(b.weak_mult !== 1 ? [["Самый слабый стат", `${formatMult(b.weak_mult)} — бонус отстающей цели`]] : []),
+    ...(b.weak_mult !== 1
+      ? [["Самый слабый стат", `${formatMult(b.weak_mult)} — бонус отстающей цели`] as [string, ReactNode]]
+      : []),
   ];
   return (
     <Stack gap={4}>

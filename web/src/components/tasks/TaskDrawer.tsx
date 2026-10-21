@@ -36,7 +36,7 @@ import {
   useTaskAction,
 } from "../../api/tasks";
 import { formatMinutes } from "../../lib/format";
-import { STATUS, formatMult } from "../../lib/tasks";
+import { STATUS, formatMult, taskXp } from "../../lib/tasks";
 import { formatClock, formatTime, useNow } from "../../lib/time";
 import { StatItem } from "../StatItem";
 import { VoiceButton, appendText } from "../VoiceButton";
@@ -58,13 +58,18 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function Summary({ task }: { task: TaskDetail }) {
+  const xp = taskXp(task);
   return (
     <Stack gap="sm">
       {task.expected_result && <Field label="Результат">{task.expected_result}</Field>}
-      <SimpleGrid cols={2}>
+      <SimpleGrid cols={{ base: 2, sm: 3 }}>
         <Field label="Цель">{task.goal_path ?? "не выбрана"}</Field>
         <Field label="Оценка">
           {task.estimate_min !== null ? formatMinutes(task.estimate_min) : "нет оценки"}
+        </Field>
+        {/* Как в квадратике списка: у закрытой — начисленное, иначе — оценка × множитель. */}
+        <Field label={task.status === "done" || task.status === "rejected" ? "Начислено" : "Принесёт"}>
+          {xp !== null ? `${xp > 0 ? "+" : ""}${xp} XP` : "нет оценки"}
         </Field>
       </SimpleGrid>
       {task.value_mult !== null && (

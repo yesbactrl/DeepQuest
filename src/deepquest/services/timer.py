@@ -1,7 +1,11 @@
-"""Таймер задач. Время — метки в БД, а не счётчик в памяти: сон Mac и перезапуск ему не мешают."""
+"""Таймер задач. Время — метки в БД, а не счётчик в памяти: сон Mac и перезапуск ему не мешают.
+
+Таймер не обязателен: время можно просто вписать («ушло полтора часа»). Оно тоже пишется
+отрезком, поэтому норма, стрик и графики считают его так же, как время по таймеру.
+"""
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,6 +42,40 @@ async def total_minutes(session: AsyncSession, task: Task, now: datetime) -> int
         for entry in await _entries(session, task)
     )
     return max(int(seconds // 60), 0)
+
+
+async def set_total_minutes(
+    session: AsyncSession, user: User, task: Task, minutes: int, at: datetime
+) -> None:
+    """Сколько всего ушло на задачу, со слов пользователя. Если больше, чем по отрезкам, —
+    дописываем отрезок, который закончился в `at`; если меньше — укорачиваем последние отрезки."""
+    if task.status == TaskStatus.RUNNING:
+        raise TimerError(f"Task {task.id} is running: stop the timer first")
+    delta = timedelta(minutes=minutes - await total_minutes(session, task, at))
+    if delta > timedelta(0):
+        session.add(
+            TimeEntry(
+                user_id=user.id,
+                task_id=task.id,
+                started_at=at - delta,
+                ended_at=at,
+                stop_reason="logged",
+            )
+        )
+    else:
+        excess = -delta
+        entries = sorted(await _entries(session, task), key=lambda e: e.started_at, reverse=True)
+        for entry in entries:
+            if excess <= timedelta(0):
+                break
+            assert entry.ended_at is not None
+            cut = min(entry.ended_at - entry.started_at, excess)
+            excess -= cut
+            if cut == entry.ended_at - entry.started_at:
+                await session.delete(entry)
+            else:
+                entry.ended_at -= cut
+    await session.flush()
 
 
 def _close(entry: TimeEntry, at: datetime, reason: str) -> None:

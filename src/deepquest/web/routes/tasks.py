@@ -36,6 +36,7 @@ from deepquest.web.schemas import (
     TaskDetailOut,
     TaskEdit,
     TaskOut,
+    TimeIn,
     TimerOut,
     ValidationOut,
     XpBreakdownOut,
@@ -351,6 +352,8 @@ async def report(
     context: ContextDep,
     text: Annotated[str, Form()] = "",
     files: Annotated[list[UploadFile] | None, File()] = None,
+    # Сколько ушло на задачу; не указано — по таймеру, а без таймера — по оценке.
+    spent_min: Annotated[int | None, Form(ge=1, le=24 * 60)] = None,
 ) -> CheckOut:
     task = await _task(session, user, task_id)
     if task.status != TaskStatus.AWAITING_REPORT:
@@ -380,7 +383,7 @@ async def report(
     images = await context.proofs.images(saved, context.telegram_download)
     try:
         outcome = await validation.submit_report(
-            session, context.agent, user, task, report_input, images, _now()
+            session, context.agent, user, task, report_input, images, _now(), spent_min
         )
     except ReportError:
         raise _conflict() from None
@@ -415,6 +418,16 @@ async def dispute(
         )
     except ReportError:
         raise _conflict("Оспорить можно один раз и только проверенный отчёт.") from None
+    return await _check_out(session, user, outcome)
+
+
+@router.post("/tasks/{task_id}/time")
+async def change_time(task_id: int, body: TimeIn, session: SessionDep, user: UserDep) -> CheckOut:
+    task = await _task(session, user, task_id)
+    try:
+        outcome = await validation.change_time(session, user, task, body.spent_min, _now())
+    except ReportError, TimerError:
+        raise _conflict("Время правится после «Готово», когда таймер остановлен.") from None
     return await _check_out(session, user, outcome)
 
 

@@ -194,12 +194,25 @@ export function useStart(id: number) {
 }
 
 export function useReport(id: number) {
-  return useTaskMutation(({ text, files }: { text: string; files: File[] }) => {
-    const form = new FormData();
-    form.set("text", text);
-    files.forEach((file) => form.append("files", file));
-    return api.upload<CheckResult>(`/tasks/${id}/report`, form);
-  }, nested);
+  return useTaskMutation(
+    ({ text, files, spentMin }: { text: string; files: File[]; spentMin: number | null }) => {
+      const form = new FormData();
+      form.set("text", text);
+      // Сколько ушло на задачу; не указано — по таймеру, а без таймера — по оценке.
+      if (spentMin !== null) form.set("spent_min", String(spentMin));
+      files.forEach((file) => form.append("files", file));
+      return api.upload<CheckResult>(`/tasks/${id}/report`, form);
+    },
+    nested,
+  );
+}
+
+// Поправить, сколько ушло на задачу: у проверенной XP пересчитывается тем же вердиктом.
+export function useChangeTime(id: number) {
+  return useTaskMutation(
+    (spentMin: number) => api.post<CheckResult>(`/tasks/${id}/time`, { spent_min: spentMin }),
+    nested,
+  );
 }
 
 export function useRecheck(id: number) {

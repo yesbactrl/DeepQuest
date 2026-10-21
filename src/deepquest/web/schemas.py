@@ -219,6 +219,11 @@ class ReviseIn(BaseModel):
     correction: str | None = Field(default=None, max_length=4000)
 
 
+class TimeIn(BaseModel):
+    # Сутки — с запасом: больше двух оценок в XP всё равно не засчитывается.
+    spent_min: int = Field(ge=1, le=24 * 60)
+
+
 class DisputeIn(BaseModel):
     argument: str = Field(min_length=1, max_length=4000)
 

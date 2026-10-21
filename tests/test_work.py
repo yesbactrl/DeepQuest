@@ -300,16 +300,26 @@ async def test_commands_go_pause_done(
     assert "Что получилось?" in harness.last_text
 
 
-async def test_done_without_timer_warns_about_zero(
+async def test_done_without_timer_counts_estimate(
     sessionmaker: async_sessionmaker[AsyncSession], seed: Seed
 ) -> None:
     harness = BotHarness(sessionmaker, allowed_ids=[ME])
+    harness.agent.validations.append(verdict())
     await harness.send(ME, "/backlog")
     await harness.tap(ME, "1")
 
     await harness.tap(ME, texts.DONE_BUTTON)
+    assert "засчитаю по оценке — 2 ч" in harness.last_text
+    await harness.send(ME, "Запустил: https://ads.tiktok.com/c/1")
 
-    assert "Таймер по задаче не запускался" in harness.last_text
+    # Таймер не запускали: 120 мин по оценке × 1.5.
+    assert harness.agent.reports[0].actual_min == 120
+    assert harness.last_text.startswith("✅ Засчитано · +180 XP")
+    async with sessionmaker() as session:
+        [entry] = await session.scalars(select(TimeEntry))
+        # Время записано отрезком: его видят норма, стрик и графики.
+        assert entry.stop_reason == "logged"
+        assert entry.ended_at - entry.started_at == timedelta(minutes=120)
 
 
 async def test_agent_down_then_recheck(

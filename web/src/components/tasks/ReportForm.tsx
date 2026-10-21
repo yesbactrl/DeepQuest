@@ -5,6 +5,7 @@ import {
   FileButton,
   Group,
   Image,
+  NumberInput,
   Paper,
   SimpleGrid,
   Stack,
@@ -53,6 +54,8 @@ function Previews({ files, onRemove }: { files: File[]; onRemove: (index: number
 export function ReportForm({ task }: { task: TaskDetail }) {
   const report = useReport(task.id);
   const [text, setText] = useState("");
+  // Таймер не обязателен: без него предлагаем оценку, и её можно поправить.
+  const [spent, setSpent] = useState<number | string>(task.spent_min || task.estimate_min || "");
   const [files, setFiles] = useState<File[]>([]);
 
   function addFiles(added: File[]) {
@@ -70,7 +73,7 @@ export function ReportForm({ task }: { task: TaskDetail }) {
 
   function submit() {
     report.mutate(
-      { text, files },
+      { text, files, spentMin: typeof spent === "number" && spent >= 1 ? spent : null },
       {
         onSuccess: (result) => {
           if (result.agent_failed) return;
@@ -89,10 +92,22 @@ export function ReportForm({ task }: { task: TaskDetail }) {
   const hasLink = /https?:\/\//.test(text);
   return (
     <Stack gap="sm">
-      <Text size="sm">
-        По таймеру: <b>{formatMinutes(task.spent_min)}</b>
-        {task.spent_min === 0 && " — таймер не запускался, поэтому XP будет 0"}
-      </Text>
+      <NumberInput
+        label="Сколько ушло, минут"
+        description={
+          task.spent_min
+            ? `По таймеру ${formatMinutes(task.spent_min)}. Ушло иначе — поправь.`
+            : "Таймер не запускался — подставил оценку. Ушло иначе — поправь."
+        }
+        min={1}
+        max={24 * 60}
+        step={15}
+        allowDecimal={false}
+        value={spent}
+        onChange={setSpent}
+        disabled={report.isPending}
+        w={{ base: "100%", sm: 320 }}
+      />
       <Textarea
         label="Что получилось?"
         description="Что сделал и что понял. Скриншот можно вставить прямо сюда через ⌘+V"

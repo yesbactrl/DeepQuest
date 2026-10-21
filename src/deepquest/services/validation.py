@@ -83,9 +83,16 @@ async def submit_report(
     report_input: ReportInput,
     images: list[ProofImage],
     now: datetime,
+    spent_min: int | None = None,
 ) -> ValidationOutcome:
+    """`spent_min` — сколько ушло со слов пользователя. Не указано и таймер не запускали —
+    считаем, что ушло столько, сколько заложено в оценке."""
     if task.status != TaskStatus.AWAITING_REPORT:
         raise ReportError(f"Task {task.id} is {task.status}, not awaiting a report")
+    by_timer = await timer.total_minutes(session, task, now)
+    spent = spent_min if spent_min is not None else by_timer or task.estimate_min
+    if spent is not None and spent != by_timer:
+        await timer.set_total_minutes(session, user, task, spent, now)
     report = Report(
         task_id=task.id,
         text=report_input.text,
@@ -95,6 +102,38 @@ async def submit_report(
     session.add(report)
     await session.flush()
     return await _check(session, agent, user, task, report, images, now)
+
+
+async def change_time(
+    session: AsyncSession, user: User, task: Task, minutes: int, now: datetime
+) -> ValidationOutcome:
+    """Поправить, сколько ушло на задачу. У проверенной задачи XP пересчитывается тем же
+    вердиктом — поправкой в журнале, как при оспаривании; агента заново не спрашиваем."""
+    if task.status not in {TaskStatus.AWAITING_REPORT, TaskStatus.DONE, TaskStatus.REJECTED}:
+        raise ReportError(f"Task {task.id} is {task.status}: time is changed after «Готово»")
+    if task.estimate_min is None or task.value_mult is None:
+        raise ReportError(f"Task {task.id} has no estimate")
+    await timer.set_total_minutes(session, user, task, minutes, now)
+    validation = await latest_validation(session, task)
+    report = await latest_report(session, task)
+    if task.status == TaskStatus.AWAITING_REPORT or validation is None or report is None:
+        return ValidationOutcome(task)
+    breakdown = xp.compute_task_xp(
+        actual_min=await timer.total_minutes(session, task, now),
+        estimate_min=task.estimate_min,
+        value_mult=task.value_mult,
+        verdict=validation.verdict,
+        honor_mode=report.honor_mode,
+        weak_mult=await character.weak_mult(session, user, task, now),
+    )
+    event = await xp.record_task_xp(session, user, task, breakdown, now)
+    return ValidationOutcome(
+        task,
+        validation=validation,
+        breakdown=breakdown,
+        xp_delta=event.amount,
+        total_xp=await xp.total_xp(session, user),
+    )
 
 
 async def retry(

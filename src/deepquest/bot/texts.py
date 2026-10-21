@@ -417,9 +417,15 @@ def timer_paused(task: Task, total_min: int) -> str:
 
 
 def ask_report(task: Task, total_min: int) -> str:
-    lines = [f"✅ <b>{escape(task.title)}</b>: {format_minutes(total_min)} по таймеру.", ""]
-    if total_min == 0:
-        lines += ["⚠️ Таймер по задаче не запускался, поэтому XP будет 0.", ""]
+    if total_min == 0 and task.estimate_min is not None:
+        # Таймер не обязателен: без него время засчитывается по оценке.
+        lines = [
+            f"✅ <b>{escape(task.title)}</b>: засчитаю по оценке — "
+            f"{format_minutes(task.estimate_min)}. Ушло иначе — поправишь время в вебе.",
+            "",
+        ]
+    else:
+        lines = [f"✅ <b>{escape(task.title)}</b>: {format_minutes(total_min)} по таймеру.", ""]
     lines.append(
         "Что получилось? Напиши коротко: что сделал и что понял. Приложи пруф — скрин или "
         "ссылку. Без пруфа засчитаю «на честном слове» с ×0.8."
