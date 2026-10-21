@@ -4,7 +4,9 @@ import { notifications } from "@mantine/notifications";
 import { IconDots, IconPencil, IconRefresh, IconTrash } from "@tabler/icons-react";
 
 import { type DiaryEntry, useAnalyzeEntry, useDeleteEntry } from "../../api/diary";
+import { useGoals } from "../../api/goals";
 import { PART_OF_DAY, SCALES, entryTime, formatScore, scoreColor } from "../../lib/diary";
+import { SphereNotes } from "./Spheres";
 
 export function ScoreBadges({
   values,
@@ -31,6 +33,7 @@ export function ScoreBadges({
 export function EntryCard({ entry, onEdit }: { entry: DiaryEntry; onEdit: (entry: DiaryEntry) => void }) {
   const analyze = useAnalyzeEntry(entry.id);
   const remove = useDeleteEntry(entry.id);
+  const goals = useGoals();
 
   const runAnalysis = () =>
     analyze.mutate(undefined, {
@@ -85,6 +88,7 @@ export function EntryCard({ entry, onEdit }: { entry: DiaryEntry; onEdit: (entry
         </Group>
 
         <ScoreBadges values={entry} />
+        <SphereNotes spheres={entry.spheres} goals={goals.data ?? []} />
         {(entry.emotions.length > 0 || entry.factors.length > 0) && (
           <Group gap={4}>
             {entry.emotions.map((emotion) => (

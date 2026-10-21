@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from deepquest.db.models import DiaryEntry, User
 from deepquest.services import diary
-from deepquest.services.diary import EntryEdit, EntryOutcome
+from deepquest.services.diary import EntryEdit, EntryOutcome, SphereEdit
 from deepquest.web.deps import ContextDep, SessionDep, UserDep
 from deepquest.web.schemas import (
     DiaryDayOut,
@@ -44,9 +44,12 @@ def _result(outcome: EntryOutcome) -> DiaryEntryResult:
 
 @router.get("")
 async def list_diary(
-    session: SessionDep, user: UserDep, days: Annotated[int, Query(ge=1, le=366)] = 60
+    session: SessionDep,
+    user: UserDep,
+    days: Annotated[int, Query(ge=1, le=366)] = 60,
+    goal_id: int | None = None,
 ) -> DiaryOut:
-    items = await diary.list_days(session, user, _now(), days)
+    items = await diary.list_days(session, user, _now(), days, goal_id)
     return DiaryOut(days=[DiaryDayOut.of(day) for day in items], norm_min=user.daily_norm_min)
 
 
@@ -56,7 +59,13 @@ async def add_entry(
 ) -> DiaryEntryResult:
     try:
         outcome = await diary.add_entry(
-            session, context.agent, user, body.text, _now(), analyze=body.analyze
+            session,
+            context.agent,
+            user,
+            body.text,
+            _now(),
+            analyze=body.analyze,
+            goal_ids=body.goal_ids,
         )
     except diary.DiaryError:
         raise HTTPException(422, "Напиши хоть пару слов.") from None
@@ -68,7 +77,14 @@ async def edit_entry(
     entry_id: int, body: DiaryEditIn, session: SessionDep, user: UserDep
 ) -> DiaryEntryOut:
     entry = await _entry(session, user, entry_id)
-    diary.edit_entry(entry, EntryEdit(**body.model_dump()))
+    changes = body.model_dump(exclude={"spheres"})
+    spheres = (
+        [SphereEdit(s.goal_id, s.score, s.good, s.bad) for s in body.spheres]
+        if body.spheres is not None
+        else None
+    )
+    await diary.edit_entry(session, user, entry, EntryEdit(**changes, spheres=spheres))
+    await session.flush()
     return DiaryEntryOut.of(entry)
 
 

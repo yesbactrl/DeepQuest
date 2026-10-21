@@ -275,6 +275,14 @@ class PromptedAgent(ABC):
 
     async def analyze_diary(self, entry: DiaryContext) -> AgentResult[DiaryAnalysis]:
         parts = [_block("written_at", entry.written_at)]
+        if entry.goals:
+            parts.append(render_goals(entry.goals))
+        if entry.chosen_goal_ids:
+            parts.append(
+                _block(
+                    "chosen_goals", ", ".join(f"id={goal_id}" for goal_id in entry.chosen_goal_ids)
+                )
+            )
         if entry.known_factors:
             parts.append(_block("known_factors", ", ".join(entry.known_factors)))
         if entry.known_emotions:

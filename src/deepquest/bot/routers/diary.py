@@ -13,7 +13,7 @@ from deepquest.bot import texts
 from deepquest.bot.filters import TEXT_ANSWER
 from deepquest.bot.ui import edit_or_send
 from deepquest.db.models import User
-from deepquest.services import diary
+from deepquest.services import diary, goals
 
 
 class DiaryForm(StatesGroup):
@@ -26,11 +26,12 @@ async def _save(
     placeholder = await message.answer(texts.DIARY_SAVING)
     async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
         outcome = await diary.add_entry(session, agent, user, text, message.date)
+    titles = {goal.id: goal.title for goal in await goals.list_goals(session, user)}
     await edit_or_send(
         bot,
         message.chat.id,
         placeholder.message_id,
-        texts.diary_entry(outcome.entry, agent_failed=outcome.agent_failed),
+        texts.diary_entry(outcome.entry, agent_failed=outcome.agent_failed, goal_titles=titles),
     )
 
 

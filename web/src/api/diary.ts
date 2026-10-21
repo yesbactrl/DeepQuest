@@ -5,6 +5,14 @@ import { api } from "./client";
 export type DiaryStatus = "done" | "failed" | "private";
 export type PartOfDay = "morning" | "day" | "evening";
 
+// Что запись говорит про одну сферу — цель верхнего уровня.
+export interface DiarySphere {
+  goal_id: number;
+  score: number | null;
+  good: string | null;
+  bad: string | null;
+}
+
 export interface DiaryEntry {
   id: number;
   text: string;
@@ -20,6 +28,7 @@ export interface DiaryEntry {
   summary: string | null;
   status: DiaryStatus;
   edited: boolean;
+  spheres: DiarySphere[];
 }
 
 export interface DiaryDay {
@@ -51,12 +60,17 @@ export interface DiaryEdit {
   emotions?: string[];
   factors?: string[];
   summary?: string;
+  // Сферы целиком; score 0 — без оценки.
+  spheres?: { goal_id: number; score: number; good: string; bad: string }[];
 }
 
 const DIARY_KEY = ["diary"] as const;
 
-export function useDiary() {
-  return useQuery({ queryKey: DIARY_KEY, queryFn: () => api.get<Diary>("/diary") });
+export function useDiary(goalId: number | null = null) {
+  return useQuery({
+    queryKey: [...DIARY_KEY, goalId],
+    queryFn: () => api.get<Diary>(goalId === null ? "/diary" : `/diary?goal_id=${goalId}`),
+  });
 }
 
 function useDiaryMutation<I, O>(mutationFn: (input: I) => Promise<O>) {
@@ -68,8 +82,9 @@ function useDiaryMutation<I, O>(mutationFn: (input: I) => Promise<O>) {
 }
 
 export function useAddEntry() {
-  return useDiaryMutation(({ text, analyze }: { text: string; analyze: boolean }) =>
-    api.post<EntryResult>("/diary", { text, analyze }),
+  return useDiaryMutation(
+    ({ text, analyze, goalIds }: { text: string; analyze: boolean; goalIds: number[] }) =>
+      api.post<EntryResult>("/diary", { text, analyze, goal_ids: goalIds }),
   );
 }
 

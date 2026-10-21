@@ -333,6 +333,32 @@ class DiaryEntry(Base):
     )
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
+    spheres: Mapped[list[DiarySphere]] = relationship(
+        back_populates="entry",
+        cascade="all, delete-orphan",
+        order_by="DiarySphere.id",
+        lazy="selectin",
+    )
+
+
+class DiarySphere(Base):
+    """Что запись говорит про одну сферу жизни — цель верхнего уровня."""
+
+    __tablename__ = "diary_spheres"
+    __table_args__ = (UniqueConstraint("entry_id", "goal_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entry_id: Mapped[int] = mapped_column(
+        ForeignKey("diary_entries.id", ondelete="CASCADE"), index=True
+    )
+    goal_id: Mapped[int] = mapped_column(ForeignKey("goals.id", ondelete="CASCADE"), index=True)
+    # Как в этой сфере сейчас, 1–5; пусто — из записи не понять.
+    score: Mapped[int | None]
+    good: Mapped[str | None] = mapped_column(Text)  # что радует
+    bad: Mapped[str | None] = mapped_column(Text)  # что огорчает
+
+    entry: Mapped[DiaryEntry] = relationship(back_populates="spheres")
+
 
 class FsmRecord(Base):
     """Состояние диалога aiogram (FSM). Хранится в базе, чтобы сценарии переживали перезапуск."""

@@ -4,7 +4,7 @@ from datetime import UTC, datetime, time
 from html import escape
 from zoneinfo import ZoneInfo
 
-from deepquest.db.models import DiaryEntry, Goal, Task, TaskStatus, User
+from deepquest.db.models import DiaryEntry, DiarySphere, Goal, Task, TaskStatus, User
 from deepquest.services.character import WEAK_STAT_MULT, Character, Stat
 from deepquest.services.goals import MAX_TITLE_LEN, MAX_WHY_LEN
 from deepquest.services.plan import FINISHED, PlanDay
@@ -577,7 +577,21 @@ DIARY_CANCELLED = "Ок, не записываю."
 DIARY_SCALES = (("mood", "настроение"), ("energy", "энергия"), ("drive", "желание"))
 
 
-def diary_entry(entry: DiaryEntry, *, agent_failed: bool) -> str:
+def _sphere_line(sphere: DiarySphere, title: str) -> str:
+    line = f"🎯 <b>{escape(title)}</b>"
+    if sphere.score is not None:
+        line += f" {sphere.score}/5"
+    notes = []
+    if sphere.good:
+        notes.append(f"👍 {escape(sphere.good)}")
+    if sphere.bad:
+        notes.append(f"👎 {escape(sphere.bad)}")
+    return f"{line} — {' · '.join(notes)}" if notes else line
+
+
+def diary_entry(
+    entry: DiaryEntry, *, agent_failed: bool, goal_titles: dict[int, str] | None = None
+) -> str:
     if agent_failed:
         return (
             "📝 Записал в дневник.\n\nАгент сейчас недоступен, поэтому без оценок: "
@@ -597,6 +611,10 @@ def diary_entry(entry: DiaryEntry, *, agent_failed: bool) -> str:
         lines.append(f"Эмоции: {escape(', '.join(entry.emotions))}")
     if entry.factors:
         lines.append(f"Что повлияло: {escape(', '.join(entry.factors))}")
+    titles = goal_titles or {}
+    spheres = [s for s in entry.spheres if s.goal_id in titles]
+    if spheres:
+        lines += ["", *(_sphere_line(s, titles[s.goal_id]) for s in spheres)]
     lines += ["", "<i>Оценки можно поправить в вебе, в «Дневнике».</i>"]
     return "\n".join(lines)
 

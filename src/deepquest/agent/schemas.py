@@ -92,6 +92,15 @@ class ReportContext:
 Score = Literal[1, 2, 3, 4, 5]
 
 
+class DiarySphereNote(BaseModel):
+    goal_id: int = Field(description="id цели из <goals>, про которую говорит запись")
+    score: Score | None = Field(description="Как в этой сфере сейчас, 1–5; null, если не понять")
+    good: str | None = Field(description="Что в этой сфере радует, до 80 символов; иначе null")
+    bad: str | None = Field(
+        description="Что огорчает или хочется изменить, до 80 символов; иначе null"
+    )
+
+
 class DiaryAnalysis(BaseModel):
     mood: Score | None = Field(
         description="Настроение 1–5 по шкале из инструкции; null, если не понять"
@@ -103,6 +112,10 @@ class DiaryAnalysis(BaseModel):
         description="0–5 факторов, что повлияло на состояние, 1–3 слова каждый"
     )
     summary: str = Field(description="Суть записи одной строкой до 80 символов")
+    spheres: list[DiarySphereNote] = Field(
+        default_factory=list,
+        description="Цели, о которых запись что-то говорит; пусто, если ни о какой",
+    )
 
 
 @dataclass(frozen=True)
@@ -116,3 +129,7 @@ class DiaryContext:
     # те же формулировки, иначе статистика рассыплется на «плохой сон» и «не выспался».
     known_factors: tuple[str, ...] = ()
     known_emotions: tuple[str, ...] = ()
+    # Сферы — цели пользователя с направлениями: агент раскладывает запись по ним.
+    goals: tuple[GoalContext, ...] = ()
+    # Цели, которые пользователь сам отметил у записи: про них агент пишет обязательно.
+    chosen_goal_ids: tuple[int, ...] = ()

@@ -7,10 +7,10 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from deepquest.agent.schemas import DiaryAnalysis
+from deepquest.agent.schemas import DiaryAnalysis, DiarySphereNote
 from deepquest.bot import texts
 from deepquest.db.models import DiaryEntry, DiaryStatus, TimeEntry, User, XpEvent, XpKind
-from deepquest.services import diary, tasks
+from deepquest.services import diary, goals, tasks
 from deepquest.services.days import season_of
 from deepquest.services.proofs import ProofStore
 from deepquest.services.tasks import TaskFields
@@ -147,7 +147,9 @@ async def test_manual_scores_survive_reanalysis(
     async with sessionmaker() as session:
         user = await _user(session, user_id)
         entry = (await diary.add_entry(session, agent, user, "Так себе утро", MORNING)).entry
-        diary.edit_entry(entry, diary.EntryEdit(mood=3, factors=["Дождь"], energy=0))
+        await diary.edit_entry(
+            session, user, entry, diary.EntryEdit(mood=3, factors=["Дождь"], energy=0)
+        )
 
         await diary.reanalyze(session, agent, user, entry)
 
@@ -314,3 +316,142 @@ async def test_bot_diary_cancel_and_agent_down(
     assert "Агент сейчас недоступен" in harness.last_text
     [entry] = await _entries(sessionmaker)
     assert entry.status == DiaryStatus.FAILED
+
+
+# Сферы
+
+
+@pytest.fixture
+async def goal_ids(sessionmaker: async_sessionmaker[AsyncSession], user_id: int) -> dict[str, int]:
+    async with sessionmaker() as session:
+        user = await _user(session, user_id)
+        capital = await goals.create_goal(session, user, "Капитал", "Свобода")
+        media = await goals.create_goal(session, user, "Медийка", "Аудитория")
+        channel = await goals.create_goal(session, user, "Телеграм канал", None, media)
+        await session.commit()
+        return {"capital": capital.id, "media": media.id, "channel": channel.id}
+
+
+def _spheres(entry: DiaryEntry) -> list[tuple[int, int | None, str | None, str | None]]:
+    return [(s.goal_id, s.score, s.good, s.bad) for s in entry.spheres]
+
+
+async def test_entry_is_split_by_spheres(
+    sessionmaker: async_sessionmaker[AsyncSession], user_id: int, goal_ids: dict[str, int]
+) -> None:
+    agent = FakeAgent()
+    result = analysis()
+    result.spheres = [
+        DiarySphereNote(
+            goal_id=goal_ids["capital"], score=2, good=None, bad="Аренда съела подушку"
+        ),
+        # Направление — это всё равно сфера его цели.
+        DiarySphereNote(goal_id=goal_ids["channel"], score=4, good="+40 подписчиков", bad=None),
+        DiarySphereNote(goal_id=goal_ids["media"], score=5, good="дубль", bad=None),
+        DiarySphereNote(goal_id=9999, score=3, good="чужая цель", bad=None),
+    ]
+    agent.diary.append(result)
+    async with sessionmaker() as session:
+        user = await _user(session, user_id)
+        outcome = await diary.add_entry(
+            session, agent, user, "Деньги тревожат, канал прёт", MORNING
+        )
+
+    assert _spheres(outcome.entry) == [
+        (goal_ids["capital"], 2, None, "Аренда съела подушку"),
+        (goal_ids["media"], 4, "+40 подписчиков", None),
+    ]
+    context = agent.diary_entries[0]
+    assert [g.title for g in context.goals] == ["Капитал", "Медийка"]
+    assert context.goals[1].directions[0].title == "Телеграм канал"
+
+
+async def test_chosen_spheres_are_kept(
+    sessionmaker: async_sessionmaker[AsyncSession], user_id: int, goal_ids: dict[str, int]
+) -> None:
+    agent = FakeAgent()
+    agent.diary.append(analysis())  # агент про сферы ничего не сказал
+    async with sessionmaker() as session:
+        user = await _user(session, user_id)
+        outcome = await diary.add_entry(
+            session, agent, user, "Про деньги", MORNING, goal_ids=[goal_ids["capital"]]
+        )
+        private = await diary.add_entry(
+            session, agent, user, "Для себя", MORNING, analyze=False, goal_ids=[goal_ids["channel"]]
+        )
+
+    assert agent.diary_entries[0].chosen_goal_ids == (goal_ids["capital"],)
+    assert _spheres(outcome.entry) == [(goal_ids["capital"], None, None, None)]
+    assert _spheres(private.entry) == [(goal_ids["media"], None, None, None)]
+
+
+async def test_manual_spheres_survive_reanalysis(
+    sessionmaker: async_sessionmaker[AsyncSession], user_id: int, goal_ids: dict[str, int]
+) -> None:
+    agent = FakeAgent()
+    again = analysis()
+    again.spheres = [
+        DiarySphereNote(goal_id=goal_ids["capital"], score=1, good=None, bad="всё плохо")
+    ]
+    agent.diary += [analysis(), again]
+    async with sessionmaker() as session:
+        user = await _user(session, user_id)
+        entry = (await diary.add_entry(session, agent, user, "Про канал", MORNING)).entry
+        await diary.edit_entry(
+            session,
+            user,
+            entry,
+            diary.EntryEdit(spheres=[diary.SphereEdit(goal_ids["media"], 5, "Рост", None)]),
+        )
+        await diary.reanalyze(session, agent, user, entry)
+
+    assert _spheres(entry) == [(goal_ids["media"], 5, "Рост", None)]
+
+
+async def test_diary_api_spheres(
+    client: httpx.AsyncClient, agent: FakeAgent, goal_ids: dict[str, int]
+) -> None:
+    about_money = analysis()
+    about_money.spheres = [
+        DiarySphereNote(goal_id=goal_ids["capital"], score=2, good=None, bad="аренда")
+    ]
+    agent.diary += [about_money, analysis()]
+    money = (await client.post("/api/diary", json={"text": "Деньги"})).json()["entry"]
+    other = (
+        await client.post("/api/diary", json={"text": "Канал", "goal_ids": [goal_ids["media"]]})
+    ).json()["entry"]
+
+    assert money["spheres"] == [
+        {"goal_id": goal_ids["capital"], "score": 2, "good": None, "bad": "аренда"}
+    ]
+    assert other["spheres"][0]["goal_id"] == goal_ids["media"]
+
+    only_money = (await client.get("/api/diary", params={"goal_id": goal_ids["capital"]})).json()
+    assert [e["id"] for day in only_money["days"] for e in day["entries"]] == [money["id"]]
+
+    edited = await client.patch(
+        f"/api/diary/{money['id']}",
+        json={
+            "spheres": [
+                {"goal_id": goal_ids["capital"], "score": 3, "good": "отложил", "bad": None}
+            ]
+        },
+    )
+    assert edited.json()["spheres"] == [
+        {"goal_id": goal_ids["capital"], "score": 3, "good": "отложил", "bad": None}
+    ]
+
+
+async def test_bot_diary_shows_spheres(
+    sessionmaker: async_sessionmaker[AsyncSession], user_id: int, goal_ids: dict[str, int]
+) -> None:
+    harness = BotHarness(sessionmaker, allowed_ids=[ME])
+    result = analysis()
+    result.spheres = [
+        DiarySphereNote(goal_id=goal_ids["capital"], score=2, good="отложил 100$", bad="аренда")
+    ]
+    harness.agent.diary.append(result)
+
+    await harness.send(ME, "/d по деньгам тревожно")
+
+    assert "🎯 <b>Капитал</b> 2/5 — 👍 отложил 100$ · 👎 аренда" in harness.last_text

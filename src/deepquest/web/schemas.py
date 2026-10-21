@@ -514,6 +514,13 @@ class CharacterOut(BaseModel):
 # Дневник
 
 
+class DiarySphereOut(BaseModel):
+    goal_id: int
+    score: int | None
+    good: str | None
+    bad: str | None
+
+
 class DiaryEntryOut(BaseModel):
     id: int
     text: str
@@ -528,6 +535,8 @@ class DiaryEntryOut(BaseModel):
     summary: str | None
     status: DiaryStatus
     edited: bool
+    # Сферы — цели, о которых запись что-то говорит. Название и цвет фронтенд берёт из целей.
+    spheres: list[DiarySphereOut]
 
     @classmethod
     def of(cls, entry: DiaryEntry) -> DiaryEntryOut:
@@ -545,6 +554,10 @@ class DiaryEntryOut(BaseModel):
             summary=entry.summary,
             status=entry.status,
             edited=entry.edited,
+            spheres=[
+                DiarySphereOut(goal_id=s.goal_id, score=s.score, good=s.good, bad=s.bad)
+                for s in entry.spheres
+            ],
         )
 
 
@@ -579,6 +592,16 @@ class DiaryIn(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
     # False — не отдавать запись агенту: оценки ставятся вручную.
     analyze: bool = True
+    # Сферы, которые пользователь отметил сам: про них агент напишет обязательно.
+    goal_ids: list[int] = Field(default_factory=list, max_length=20)
+
+
+class DiarySphereIn(BaseModel):
+    goal_id: int
+    # 0 или пусто — без оценки.
+    score: int | None = Field(default=None, ge=0, le=5)
+    good: str | None = Field(default=None, max_length=300)
+    bad: str | None = Field(default=None, max_length=300)
 
 
 class DiaryEditIn(BaseModel):
@@ -590,6 +613,8 @@ class DiaryEditIn(BaseModel):
     emotions: list[str] | None = Field(default=None, max_length=10)
     factors: list[str] | None = Field(default=None, max_length=10)
     summary: str | None = Field(default=None, max_length=200)
+    # Сферы целиком; пусто — не менять.
+    spheres: list[DiarySphereIn] | None = Field(default=None, max_length=20)
 
 
 class DiaryEntryResult(BaseModel):
