@@ -5,9 +5,20 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from deepquest.db.models import Goal, GoalStatus, Task, TaskStatus, User, ValidationVerdict, XpKind
+from deepquest.db.models import (
+    DiaryEntry,
+    DiaryStatus,
+    Goal,
+    GoalStatus,
+    Task,
+    TaskStatus,
+    User,
+    ValidationVerdict,
+    XpKind,
+)
 from deepquest.services.character import Award, Character, Stat
 from deepquest.services.charts import ChartConfig, ChartData
+from deepquest.services.diary import Day
 from deepquest.services.goals import MAX_TITLE_LEN, MAX_WHY_LEN, PALETTE, goal_path
 from deepquest.services.levels import Level
 from deepquest.services.stats import GoalStats, TaskTotals
@@ -485,3 +496,89 @@ class CharacterOut(BaseModel):
             last_award=AwardOut.of(character.last_award) if character.last_award else None,
             weak_stat_mult=weak_stat_mult,
         )
+
+
+# Дневник
+
+
+class DiaryEntryOut(BaseModel):
+    id: int
+    text: str
+    created_at: datetime
+    logical_date: date
+    part_of_day: str
+    mood: int | None
+    energy: int | None
+    drive: int | None
+    emotions: list[str]
+    factors: list[str]
+    summary: str | None
+    status: DiaryStatus
+    edited: bool
+
+    @classmethod
+    def of(cls, entry: DiaryEntry) -> DiaryEntryOut:
+        return cls(
+            id=entry.id,
+            text=entry.text,
+            created_at=entry.created_at,
+            logical_date=entry.logical_date,
+            part_of_day=entry.part_of_day,
+            mood=entry.mood,
+            energy=entry.energy,
+            drive=entry.drive,
+            emotions=entry.emotions,
+            factors=entry.factors,
+            summary=entry.summary,
+            status=entry.status,
+            edited=entry.edited,
+        )
+
+
+class DiaryDayOut(BaseModel):
+    day: date
+    mood: float | None
+    energy: float | None
+    drive: float | None
+    focus_min: int
+    xp: int
+    entries: list[DiaryEntryOut]
+
+    @classmethod
+    def of(cls, day: Day) -> DiaryDayOut:
+        return cls(
+            day=day.day,
+            mood=day.mood,
+            energy=day.energy,
+            drive=day.drive,
+            focus_min=day.focus_min,
+            xp=day.xp,
+            entries=[DiaryEntryOut.of(entry) for entry in day.entries],
+        )
+
+
+class DiaryOut(BaseModel):
+    days: list[DiaryDayOut]
+    norm_min: int
+
+
+class DiaryIn(BaseModel):
+    text: str = Field(min_length=1, max_length=4000)
+    # False — не отдавать запись агенту: оценки ставятся вручную.
+    analyze: bool = True
+
+
+class DiaryEditIn(BaseModel):
+    text: str | None = Field(default=None, max_length=4000)
+    # 0 — убрать оценку («не знаю»).
+    mood: int | None = Field(default=None, ge=0, le=5)
+    energy: int | None = Field(default=None, ge=0, le=5)
+    drive: int | None = Field(default=None, ge=0, le=5)
+    emotions: list[str] | None = Field(default=None, max_length=10)
+    factors: list[str] | None = Field(default=None, max_length=10)
+    summary: str | None = Field(default=None, max_length=200)
+
+
+class DiaryEntryResult(BaseModel):
+    entry: DiaryEntryOut
+    agent_failed: bool

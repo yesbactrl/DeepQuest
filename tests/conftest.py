@@ -26,6 +26,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from deepquest.agent.base import AgentCallLog, AgentError, AgentResult
 from deepquest.agent.schemas import (
     CurrentTask,
+    DiaryAnalysis,
+    DiaryContext,
     GoalContext,
     PlanResult,
     ReportContext,
@@ -248,6 +250,8 @@ class FakeAgent:
         self.answers: list[TasksResult | AgentError] = []
         self.revisions: list[TaskDraft | AgentError] = []
         self.validations: list[ValidationResult | AgentError] = []
+        self.diary: list[DiaryAnalysis | AgentError] = []
+        self.diary_entries: list[DiaryContext] = []
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self.reports: list[ReportContext] = []
 
@@ -279,6 +283,11 @@ class FakeAgent:
     ) -> AgentResult[TaskDraft]:
         self.calls.append(("revise", {"text": text, "current": current, "correction": correction}))
         return self._next(self.revisions, "plan_task_revise")
+
+    async def analyze_diary(self, entry: DiaryContext) -> AgentResult[DiaryAnalysis]:
+        self.diary_entries.append(entry)
+        self.calls.append(("diary", {"entry": entry}))
+        return self._next(self.diary, "analyze_diary")
 
     async def validate_report(self, report: ReportContext) -> AgentResult[ValidationResult]:
         self.reports.append(report)

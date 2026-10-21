@@ -23,6 +23,8 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   if (!response.ok) {
     throw new ApiError(response.status, await errorMessage(response));
   }
+  // 204 — тела нет (например, после удаления).
+  if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }
 
@@ -57,5 +59,6 @@ export const api = {
   post: <T>(path: string, body?: unknown) => request<T>("POST", path, body ?? {}),
   patch: <T>(path: string, body: unknown) => request<T>("PATCH", path, body),
   put: <T>(path: string, body: unknown) => request<T>("PUT", path, body),
+  delete: (path: string) => request<void>("DELETE", path),
   upload,
 };

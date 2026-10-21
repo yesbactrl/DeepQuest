@@ -14,6 +14,7 @@ import {
   IconLayoutDashboard,
   IconListCheck,
   IconMoon,
+  IconNotebook,
   IconSun,
   IconTarget,
   IconUserStar,
@@ -26,6 +27,7 @@ const SECTIONS = [
   { to: "/", label: "Дашборд", icon: IconLayoutDashboard },
   { to: "/character", label: "Персонаж", icon: IconUserStar },
   { to: "/tasks", label: "Задачи", icon: IconListCheck },
+  { to: "/diary", label: "Дневник", icon: IconNotebook },
   { to: "/goals", label: "Цели", icon: IconTarget },
 ];
 

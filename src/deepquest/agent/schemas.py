@@ -85,3 +85,34 @@ class ReportContext:
     previous_verdict: str | None = None
     previous_reason: str | None = None
     dispute: str | None = None
+
+
+# Дневник
+
+Score = Literal[1, 2, 3, 4, 5]
+
+
+class DiaryAnalysis(BaseModel):
+    mood: Score | None = Field(
+        description="Настроение 1–5 по шкале из инструкции; null, если не понять"
+    )
+    energy: Score | None = Field(description="Энергия 1–5; null, если не понять")
+    drive: Score | None = Field(description="Желание действовать 1–5; null, если не понять")
+    emotions: list[str] = Field(description="0–4 эмоции, по одному-два слова, со строчной буквы")
+    factors: list[str] = Field(
+        description="0–5 факторов, что повлияло на состояние, 1–3 слова каждый"
+    )
+    summary: str = Field(description="Суть записи одной строкой до 80 символов")
+
+
+@dataclass(frozen=True)
+class DiaryContext:
+    """Запись дневника и что о ней нужно знать агенту."""
+
+    text: str
+    # «вторник, 21 октября, 08:15 (утро)» — по местному времени пользователя.
+    written_at: str
+    # Факторы и эмоции из прошлых записей, чаще встречавшиеся — первыми: агент берёт
+    # те же формулировки, иначе статистика рассыплется на «плохой сон» и «не выспался».
+    known_factors: tuple[str, ...] = ()
+    known_emotions: tuple[str, ...] = ()

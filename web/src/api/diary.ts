@@ -1,0 +1,86 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
+import { api } from "./client";
+
+export type DiaryStatus = "done" | "failed" | "private";
+export type PartOfDay = "morning" | "day" | "evening";
+
+export interface DiaryEntry {
+  id: number;
+  text: string;
+  created_at: string;
+  logical_date: string;
+  part_of_day: PartOfDay;
+  // Шкалы 1–5; null — из записи не понять.
+  mood: number | null;
+  energy: number | null;
+  drive: number | null;
+  emotions: string[];
+  factors: string[];
+  summary: string | null;
+  status: DiaryStatus;
+  edited: boolean;
+}
+
+export interface DiaryDay {
+  day: string;
+  mood: number | null;
+  energy: number | null;
+  drive: number | null;
+  focus_min: number;
+  xp: number;
+  entries: DiaryEntry[];
+}
+
+export interface Diary {
+  days: DiaryDay[];
+  norm_min: number;
+}
+
+export interface EntryResult {
+  entry: DiaryEntry;
+  agent_failed: boolean;
+}
+
+export interface DiaryEdit {
+  text?: string;
+  // 0 — убрать оценку.
+  mood?: number;
+  energy?: number;
+  drive?: number;
+  emotions?: string[];
+  factors?: string[];
+  summary?: string;
+}
+
+const DIARY_KEY = ["diary"] as const;
+
+export function useDiary() {
+  return useQuery({ queryKey: DIARY_KEY, queryFn: () => api.get<Diary>("/diary") });
+}
+
+function useDiaryMutation<I, O>(mutationFn: (input: I) => Promise<O>) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => client.invalidateQueries({ queryKey: DIARY_KEY }),
+  });
+}
+
+export function useAddEntry() {
+  return useDiaryMutation(({ text, analyze }: { text: string; analyze: boolean }) =>
+    api.post<EntryResult>("/diary", { text, analyze }),
+  );
+}
+
+export function useEditEntry(id: number) {
+  return useDiaryMutation((changes: DiaryEdit) => api.patch<DiaryEntry>(`/diary/${id}`, changes));
+}
+
+export function useAnalyzeEntry(id: number) {
+  return useDiaryMutation(() => api.post<EntryResult>(`/diary/${id}/analyze`));
+}
+
+export function useDeleteEntry(id: number) {
+  return useDiaryMutation(() => api.delete(`/diary/${id}`));
+}

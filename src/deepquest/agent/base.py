@@ -21,6 +21,8 @@ from pydantic import BaseModel
 
 from deepquest.agent.schemas import (
     CurrentTask,
+    DiaryAnalysis,
+    DiaryContext,
     GoalContext,
     PlanResult,
     ReportContext,
@@ -99,6 +101,8 @@ class TaskAgent(Protocol):
     ) -> AgentResult[TaskDraft]: ...
 
     async def validate_report(self, report: ReportContext) -> AgentResult[ValidationResult]: ...
+
+    async def analyze_diary(self, entry: DiaryContext) -> AgentResult[DiaryAnalysis]: ...
 
 
 @dataclass(frozen=True)
@@ -202,6 +206,8 @@ class PromptedAgent(ABC):
         self._validate = Route(
             Prompt.load("validate_report"), (config.validate_model,), config.validate_effort
         )
+        # Разметка дневника — работа того же калибра, что оформление задач: Haiku.
+        self._diary = Route(Prompt.load("analyze_diary"), tuple(plan_models), config.plan_effort)
 
     async def plan_task(self, text: str, goals: Sequence[GoalContext]) -> AgentResult[PlanResult]:
         content = "\n\n".join(
@@ -266,6 +272,15 @@ class PromptedAgent(ABC):
         return await self._run(
             "validate_report", self._validate, render_report(report), images, ValidationResult
         )
+
+    async def analyze_diary(self, entry: DiaryContext) -> AgentResult[DiaryAnalysis]:
+        parts = [_block("written_at", entry.written_at)]
+        if entry.known_factors:
+            parts.append(_block("known_factors", ", ".join(entry.known_factors)))
+        if entry.known_emotions:
+            parts.append(_block("known_emotions", ", ".join(entry.known_emotions)))
+        parts += [_block("entry", entry.text), "Разметь запись дневника."]
+        return await self._run("analyze_diary", self._diary, "\n\n".join(parts), [], DiaryAnalysis)
 
     async def _run[T: BaseModel](
         self,
@@ -349,3 +364,6 @@ class FallbackAgent:
 
     async def validate_report(self, report: ReportContext) -> AgentResult[ValidationResult]:
         return await self._either("validate_report", report)
+
+    async def analyze_diary(self, entry: DiaryContext) -> AgentResult[DiaryAnalysis]:
+        return await self._either("analyze_diary", entry)

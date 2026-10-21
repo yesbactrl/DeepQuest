@@ -4,7 +4,7 @@ from datetime import UTC, datetime, time
 from html import escape
 from zoneinfo import ZoneInfo
 
-from deepquest.db.models import Goal, Task, TaskStatus, User
+from deepquest.db.models import DiaryEntry, Goal, Task, TaskStatus, User
 from deepquest.services.character import WEAK_STAT_MULT, Character, Stat
 from deepquest.services.goals import MAX_TITLE_LEN, MAX_WHY_LEN
 from deepquest.services.streak import DayMark
@@ -132,6 +132,7 @@ COMMANDS = {
     "done": "Закончить задачу и сдать отчёт",
     "backlog": "Бэклог задач",
     "stats": "Уровень, стрик и норма",
+    "d": "Запись в дневник: как ты сейчас",
     "goals": "Цели и направления",
     "settings": "Настройки",
     "cancel": "Отменить текущий шаг",
@@ -556,3 +557,38 @@ def stats(character: Character) -> str:
             *(["", "<b>Статы</b>", *map(_stat_line, character.stats)] if character.stats else []),
         ]
     )
+
+
+# Дневник
+
+ASK_DIARY = (
+    "Как ты? Напиши или надиктуй пару фраз: как начинается или проходит день, что "
+    "на душе. /cancel — передумал."
+)
+DIARY_SAVING = "⏳ Записываю…"
+DIARY_CANCELLED = "Ок, не записываю."
+DIARY_SCALES = (("mood", "настроение"), ("energy", "энергия"), ("drive", "желание"))
+
+
+def diary_entry(entry: DiaryEntry, *, agent_failed: bool) -> str:
+    if agent_failed:
+        return (
+            "📝 Записал в дневник.\n\nАгент сейчас недоступен, поэтому без оценок: "
+            "разобрать запись можно позже в вебе, в «Дневнике»."
+        )
+    lines = ["📝 Записал в дневник"]
+    if entry.summary:
+        lines += ["", f"<b>{escape(entry.summary)}</b>"]
+    scores = [
+        f"{label} {value}/5"
+        for name, label in DIARY_SCALES
+        if (value := getattr(entry, name)) is not None
+    ]
+    if scores:
+        lines.append(" · ".join(scores))
+    if entry.emotions:
+        lines.append(f"Эмоции: {escape(', '.join(entry.emotions))}")
+    if entry.factors:
+        lines.append(f"Что повлияло: {escape(', '.join(entry.factors))}")
+    lines += ["", "<i>Оценки можно поправить в вебе, в «Дневнике».</i>"]
+    return "\n".join(lines)
