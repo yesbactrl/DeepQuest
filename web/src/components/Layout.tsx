@@ -11,6 +11,7 @@ import {
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import {
+  IconCalendarWeek,
   IconLayoutDashboard,
   IconListCheck,
   IconMoon,
@@ -27,6 +28,7 @@ const SECTIONS = [
   { to: "/", label: "Дашборд", icon: IconLayoutDashboard },
   { to: "/character", label: "Персонаж", icon: IconUserStar },
   { to: "/tasks", label: "Задачи", icon: IconListCheck },
+  { to: "/plan", label: "План", icon: IconCalendarWeek },
   { to: "/diary", label: "Дневник", icon: IconNotebook },
   { to: "/goals", label: "Цели", icon: IconTarget },
 ];

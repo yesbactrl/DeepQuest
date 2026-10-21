@@ -149,6 +149,8 @@ class TaskOut(BaseModel):
     spent_min: int
     xp: int
     running_since: datetime | None
+    # День в плане; пусто — «когда-нибудь».
+    planned_for: date | None
 
     @classmethod
     def of(cls, task: Task, totals: TaskTotals) -> TaskOut:
@@ -169,6 +171,7 @@ class TaskOut(BaseModel):
             spent_min=totals.minutes,
             xp=totals.xp,
             running_since=totals.running_since,
+            planned_for=task.planned_for,
         )
 
 
@@ -582,3 +585,29 @@ class DiaryEditIn(BaseModel):
 class DiaryEntryResult(BaseModel):
     entry: DiaryEntryOut
     agent_failed: bool
+
+
+# План
+
+
+class ScheduleIn(BaseModel):
+    # null — вернуть в «когда-нибудь».
+    day: date | None
+
+
+class PlanDayOut(BaseModel):
+    day: date
+    tasks: list[TaskOut]
+    # Нагрузка — только незакрытые задачи: сумма оценок и XP, если всё засчитают.
+    load_min: int
+    load_xp: int
+
+
+class PlanOut(BaseModel):
+    today: date
+    norm_min: int
+    days: list[PlanDayOut]
+    unplanned: list[TaskOut]
+    overdue: list[TaskOut]
+    energy_today: float | None
+    drive_today: float | None

@@ -31,6 +31,8 @@ export interface Task {
   spent_min: number;
   xp: number;
   running_since: string | null;
+  // День в плане (YYYY-MM-DD); null — «когда-нибудь».
+  planned_for: string | null;
 }
 
 export interface Proof {
@@ -142,6 +144,7 @@ function refreshAfter(client: QueryClient, detail?: TaskDetail) {
   void client.invalidateQueries({ queryKey: ["goals"] });
   void client.invalidateQueries({ queryKey: ["summary"] });
   void client.invalidateQueries({ queryKey: ["character"] });
+  void client.invalidateQueries({ queryKey: ["plan"] });
   void client.invalidateQueries({ queryKey: ["chart"] });
 }
 

@@ -15,7 +15,7 @@ from deepquest.bot.filters import TEXT_ANSWER
 from deepquest.bot.keyboards import TaskAction, TaskCb
 from deepquest.bot.ui import drop_keyboard, edit_or_send, show_in_place
 from deepquest.db.models import Task, TaskStatus, User
-from deepquest.services import planning, tasks, timer
+from deepquest.services import plan, planning, tasks, timer
 from deepquest.services.days import local_time
 from deepquest.services.planning import PlanOutcome
 
@@ -249,6 +249,16 @@ async def cmd_backlog(message: Message, session: AsyncSession, user: User) -> No
     await message.answer(texts.backlog(items), reply_markup=keyboards.backlog(items))
 
 
+async def cmd_today(message: Message, session: AsyncSession, user: User) -> None:
+    week = await plan.build_plan(session, user, message.date, days=1)
+    [today] = week.days
+    items = [t for t in today.tasks if t.status not in plan.FINISHED] + week.overdue
+    await message.answer(
+        texts.today_plan(today, week.overdue, user.daily_norm_min),
+        reply_markup=keyboards.backlog(items),
+    )
+
+
 async def backlog_requested(
     callback: CallbackQuery, bot: Bot, session: AsyncSession, user: User
 ) -> None:
@@ -289,6 +299,7 @@ def create_router() -> Router:
         return TaskCb.filter(F.action == action)
 
     router.message.register(cmd_backlog, Command("backlog"))
+    router.message.register(cmd_today, Command("today"))
     router.message.register(cancel_clarifying, Command("cancel"), TaskForm.clarifying)
 
     router.callback_query.register(save_requested, on(TaskAction.SAVE))

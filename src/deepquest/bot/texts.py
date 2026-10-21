@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 from deepquest.db.models import DiaryEntry, Goal, Task, TaskStatus, User
 from deepquest.services.character import WEAK_STAT_MULT, Character, Stat
 from deepquest.services.goals import MAX_TITLE_LEN, MAX_WHY_LEN
+from deepquest.services.plan import FINISHED, PlanDay
 from deepquest.services.streak import DayMark
 from deepquest.services.users import MAX_DAILY_NORM_MIN, MIN_DAILY_NORM_MIN
 from deepquest.services.validation import Explanation, ValidationOutcome
@@ -130,6 +131,7 @@ COMMANDS = {
     "go": "Запустить таймер",
     "pause": "Поставить таймер на паузу",
     "done": "Закончить задачу и сдать отчёт",
+    "today": "План на сегодня",
     "backlog": "Бэклог задач",
     "stats": "Уровень, стрик и норма",
     "d": "Запись в дневник: как ты сейчас",
@@ -591,4 +593,50 @@ def diary_entry(entry: DiaryEntry, *, agent_failed: bool) -> str:
     if entry.factors:
         lines.append(f"Что повлияло: {escape(', '.join(entry.factors))}")
     lines += ["", "<i>Оценки можно поправить в вебе, в «Дневнике».</i>"]
+    return "\n".join(lines)
+
+
+# План на сегодня
+
+TODAY_EMPTY = (
+    "<b>Сегодня</b>\n\nНа сегодня ничего не запланировано. Распредели задачи по дням на "
+    "странице «План» в вебе или возьми что-нибудь из /backlog."
+)
+
+
+def _plan_line(number: int, task: Task) -> list[str]:
+    meta = []
+    if task.estimate_min is not None:
+        meta.append(format_minutes(task.estimate_min))
+    if task.value_mult is not None:
+        meta.append(format_mult(task.value_mult))
+    running = "⏱ " if task.status == TaskStatus.RUNNING else ""
+    lines = [f"{number}. {running}{escape(task.title)}"]
+    if meta:
+        lines.append(f"    <i>{' · '.join(meta)}</i>")
+    return lines
+
+
+def today_plan(day: PlanDay, overdue: list[Task], norm_min: int) -> str:
+    """План на сегодня: номера — у незакрытых (по ним кнопки), сделанное — галочкой."""
+    active = [task for task in day.tasks if task.status not in FINISHED]
+    finished = [task for task in day.tasks if task.status in FINISHED]
+    if not day.tasks and not overdue:
+        return TODAY_EMPTY
+    header = f"<b>Сегодня</b> · ~{format_minutes(day.load_min)} из {format_minutes(norm_min)} нормы"
+    if day.load_xp:
+        header += f" · +{day.load_xp} XP"
+    lines = [header, ""]
+    number = 0
+    for task in active:
+        number += 1
+        lines += _plan_line(number, task)
+    lines += [f"✓ <s>{escape(task.title)}</s>" for task in finished]
+    if overdue:
+        lines += ["", "<b>Со вчера и раньше</b>"]
+        for task in overdue:
+            number += 1
+            lines += _plan_line(number, task)
+    if day.load_min > norm_min:
+        lines += ["", f"⚠️ Набрано больше нормы на {format_minutes(day.load_min - norm_min)}."]
     return "\n".join(lines)

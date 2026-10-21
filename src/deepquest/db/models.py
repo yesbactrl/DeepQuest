@@ -145,6 +145,9 @@ class Task(Base):
     agent_call_id: Mapped[int | None] = mapped_column(
         ForeignKey("agent_calls.id", ondelete="SET NULL")
     )
+    # На какой логический день задача запланирована; пусто — «когда-нибудь».
+    # Это намерение: на XP и стрик не влияет, после закрытия остаётся как история.
+    planned_for: Mapped[date | None] = mapped_column(index=True)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
 

@@ -7,6 +7,7 @@ import {
   Drawer,
   Group,
   Loader,
+  Select,
   SimpleGrid,
   Stack,
   Text,
@@ -35,7 +36,10 @@ import {
   useTask,
   useTaskAction,
 } from "../../api/tasks";
+import { useSummary } from "../../api/dashboard";
+import { useSchedule } from "../../api/plan";
 import { formatMinutes } from "../../lib/format";
+import { ACTIVE_STATUSES, scheduleOptions } from "../../lib/plan";
 import { STATUS, formatMult, taskXp } from "../../lib/tasks";
 import { formatClock, formatTime, useNow } from "../../lib/time";
 import { StatItem } from "../StatItem";
@@ -53,6 +57,35 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
         {label}
       </Text>
       <Text>{children}</Text>
+    </Stack>
+  );
+}
+
+// Когда делать: день в плане или «когда-нибудь». Только у задач из бэклога и в работе.
+function WhenSelect({ task }: { task: TaskDetail }) {
+  const schedule = useSchedule();
+  const today = useSummary().data?.streak.today;
+  if (!today || !ACTIVE_STATUSES.has(task.status)) return null;
+  return (
+    <Stack gap={2}>
+      <Text size="xs" c="dimmed" tt="uppercase" fw={600}>
+        Когда
+      </Text>
+      <Select
+        size="xs"
+        w={200}
+        aria-label="Когда делать"
+        data={scheduleOptions(today, task.planned_for)}
+        value={task.planned_for ?? ""}
+        allowDeselect={false}
+        disabled={schedule.isPending}
+        onChange={(value) =>
+          schedule.mutate(
+            { id: task.id, day: value || null },
+            { onError: (error) => notifications.show({ color: "red", message: error.message }) },
+          )
+        }
+      />
     </Stack>
   );
 }
@@ -78,6 +111,7 @@ function Summary({ task }: { task: TaskDetail }) {
           {task.mult_reason ? ` — ${task.mult_reason}` : ""}
         </Field>
       )}
+      <WhenSelect task={task} />
     </Stack>
   );
 }
