@@ -15,7 +15,7 @@ import { IconCheck, IconPlayerPause, IconPlayerPlay, type Icon } from "@tabler/i
 
 import { type Task, useStart, useTaskAction } from "../../api/tasks";
 import { formatMinutes } from "../../lib/format";
-import { STATUS, formatMult } from "../../lib/tasks";
+import { STATUS, formatMult, taskXp } from "../../lib/tasks";
 
 const showError = (error: Error) => notifications.show({ color: "red", message: error.message });
 
@@ -34,17 +34,9 @@ function formatDuration(minutes: number): string {
   return `${hours}:${String(rest).padStart(2, "0")} ч`;
 }
 
-// Сколько XP даст задача: за закрытую — начисленное, иначе — оценка × множитель
-// (если отчёт засчитают целиком и с пруфом). Бонус слабому стату сюда не входит.
-function tileXp(task: Task): number | null {
-  if (task.status === "done" || task.status === "rejected") return task.xp;
-  if (task.estimate_min === null || task.value_mult === null) return null;
-  return Math.round(task.estimate_min * task.value_mult);
-}
-
 // Квадратик слева: XP видно сразу, а при наведении — длительность и множитель.
 function XpTile({ task }: { task: Task }) {
-  const xp = tileXp(task);
+  const xp = taskXp(task);
   const duration = task.estimate_min !== null ? formatDuration(task.estimate_min) : "без оценки";
   const mult = task.value_mult !== null ? formatMult(task.value_mult) : "—";
   return (

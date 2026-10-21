@@ -67,23 +67,40 @@ export function signedXp(amount: number): string {
   return amount > 0 ? `+${amount} XP` : `${amount} XP`;
 }
 
-// Сортировка списка: по умолчанию свежие сверху (как отдаёт сервер), можно по оценке времени.
-// Задачи без оценки при сортировке по времени уходят в конец.
+// Сколько XP даст задача: за закрытую — начисленное, иначе — оценка × множитель
+// (если отчёт засчитают целиком и с пруфом). Бонус слабому стату сюда не входит.
+export function taskXp(task: Task): number | null {
+  if (task.status === "done" || task.status === "rejected") return task.xp;
+  if (task.estimate_min === null || task.value_mult === null) return null;
+  return Math.round(task.estimate_min * task.value_mult);
+}
+
+// Сортировка списка: по умолчанию свежие сверху (как отдаёт сервер), можно по оценке
+// времени или по XP. Задачи без оценки при такой сортировке уходят в конец.
 export const SORTS = [
   { value: "recent", label: "Сначала свежие" },
   { value: "short", label: "Сначала короткие" },
   { value: "long", label: "Сначала длинные" },
+  { value: "xp_high", label: "Больше XP" },
+  { value: "xp_low", label: "Меньше XP" },
 ] as const;
 
 export type SortValue = (typeof SORTS)[number]["value"];
 
+const SORT_KEYS: Record<Exclude<SortValue, "recent">, [(task: Task) => number | null, 1 | -1]> = {
+  short: [(task) => task.estimate_min, 1],
+  long: [(task) => task.estimate_min, -1],
+  xp_high: [taskXp, -1],
+  xp_low: [taskXp, 1],
+};
+
 export function sortTasks(tasks: Task[], sort: SortValue): Task[] {
   if (sort === "recent") return tasks;
-  const sign = sort === "short" ? 1 : -1;
+  const [key, sign] = SORT_KEYS[sort];
   return [...tasks].sort((a, b) => {
-    if (a.estimate_min === null || b.estimate_min === null) {
-      return (a.estimate_min === null ? 1 : 0) - (b.estimate_min === null ? 1 : 0);
-    }
-    return sign * (a.estimate_min - b.estimate_min);
+    const x = key(a);
+    const y = key(b);
+    if (x === null || y === null) return (x === null ? 1 : 0) - (y === null ? 1 : 0);
+    return sign * (x - y);
   });
 }
