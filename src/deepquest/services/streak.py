@@ -60,11 +60,21 @@ async def focus_by_day(
 
 
 async def close_days(session: AsyncSession, user: User, now: datetime) -> None:
-    """Закрывает все незакрытые логические дни до вчерашнего включительно."""
+    """Закрывает все незакрытые логические дни до вчерашнего включительно.
+    Пока норма и стрик на паузе, дни не закрываются: их закроет `resume`."""
+    if user.streak_paused_at is not None:
+        return
     yesterday = user_logical_date(user, now) - timedelta(days=1)
     last = await session.scalar(
         select(DayStats)
         .where(DayStats.user_id == user.id)
+        .order_by(DayStats.logical_date.desc())
+        .limit(1)
+    )
+    # Жив ли стрик, решает последний день до паузы: дни на паузе не в счёт.
+    last_counted = await session.scalar(
+        select(DayStats.status)
+        .where(DayStats.user_id == user.id, DayStats.status != DayStatus.PAUSED)
         .order_by(DayStats.logical_date.desc())
         .limit(1)
     )
@@ -88,7 +98,7 @@ async def close_days(session: AsyncSession, user: User, now: datetime) -> None:
     for day in already:
         frozen[_week(day)] += 1
 
-    alive = last is not None and last.status != DayStatus.MISSED
+    alive = last_counted is not None and last_counted != DayStatus.MISSED
     rows = []
     for day in _days(first, yesterday):
         minutes = focus.get(day, 0)
@@ -119,10 +129,47 @@ async def close_days(session: AsyncSession, user: User, now: datetime) -> None:
         )
 
 
+async def pause(session: AsyncSession, user: User, now: datetime) -> None:
+    """Поставить норму и стрик на паузу. Дни до сегодняшнего сначала закрываются как обычно."""
+    if user.streak_paused_at is not None:
+        return
+    await close_days(session, user, now)
+    user.streak_paused_at = now
+
+
+async def resume(session: AsyncSession, user: User, now: datetime) -> None:
+    """Снять с паузы. Дни паузы до вчерашнего включительно записываются как `paused`:
+    стрик сквозь них не рвётся и не растёт — продолжается с того места, где остановился."""
+    if user.streak_paused_at is None:
+        return
+    first = user_logical_date(user, user.streak_paused_at)
+    yesterday = user_logical_date(user, now) - timedelta(days=1)
+    if first <= yesterday:
+        focus = await focus_by_day(session, user, first, yesterday, now)
+        rows = [
+            {
+                "user_id": user.id,
+                "logical_date": day,
+                "focus_min": focus.get(day, 0),
+                "norm_min": user.daily_norm_min,
+                "status": DayStatus.PAUSED,
+                "closed_at": now,
+            }
+            for day in _days(first, yesterday)
+        ]
+        for i in range(0, len(rows), _INSERT_CHUNK):
+            await session.execute(
+                insert(DayStats)
+                .values(rows[i : i + _INSERT_CHUNK])
+                .on_conflict_do_nothing(index_elements=["user_id", "logical_date"])
+            )
+    user.streak_paused_at = None
+
+
 @dataclass(frozen=True)
 class DayMark:
     day: date
-    # met / missed / frozen для закрытых дней, today — для текущего.
+    # met / missed / frozen / paused для закрытых дней, today — для текущего.
     status: str
     focus_min: int
     norm_min: int
@@ -138,6 +185,8 @@ class StreakInfo:
     freezes_left: int
     freezes_per_week: int
     recent: list[DayMark]
+    # Норма и стрик на паузе: интерфейс их прячет, стрик заморожен.
+    paused: bool = False
 
     @property
     def today_met(self) -> bool:
@@ -157,9 +206,13 @@ async def streak_info(session: AsyncSession, user: User, now: datetime) -> Strea
 
     best = run = 0
     for row in rows:
+        if row.status == DayStatus.PAUSED:
+            continue
         run = 0 if row.status == DayStatus.MISSED else run + 1
         best = max(best, run)
-    current = run + (1 if today_met else 0)
+    paused = user.streak_paused_at is not None
+    # На паузе сегодняшний день в стрик не идёт: стрик заморожен на том, что было.
+    current = run + (1 if today_met and not paused else 0)
     best = max(best, current)
 
     week = _week(today)
@@ -180,4 +233,5 @@ async def streak_info(session: AsyncSession, user: User, now: datetime) -> Strea
         freezes_left=max(user.freezes_per_week - used, 0),
         freezes_per_week=user.freezes_per_week,
         recent=recent,
+        paused=paused,
     )

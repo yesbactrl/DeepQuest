@@ -81,7 +81,7 @@ function Column({
   );
 }
 
-function Load({ minutes, xp, norm }: { minutes: number; xp: number; norm: number }) {
+function Load({ minutes, xp, norm }: { minutes: number; xp: number; norm: number | null }) {
   if (minutes === 0) {
     return (
       <Text size="xs" c="dimmed">
@@ -89,10 +89,11 @@ function Load({ minutes, xp, norm }: { minutes: number; xp: number; norm: number
       </Text>
     );
   }
-  const over = minutes > norm;
+  const over = norm !== null && minutes > norm;
   return (
     <Text size="xs" c={over ? "red" : "dimmed"}>
-      {formatMinutes(minutes)} из {formatMinutes(norm)}
+      {formatMinutes(minutes)}
+      {norm !== null && ` из ${formatMinutes(norm)}`}
       {xp ? ` · +${xp} XP` : ""}
       {over && ` · перебор ${formatMinutes(minutes - norm)}`}
     </Text>

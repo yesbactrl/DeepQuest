@@ -254,7 +254,10 @@ async def cmd_today(message: Message, session: AsyncSession, user: User) -> None
     [today] = week.days
     items = [t for t in today.tasks if t.status not in plan.FINISHED] + week.overdue
     await message.answer(
-        texts.today_plan(today, week.overdue, user.daily_norm_min),
+        # Норма на паузе — сравнивать не с чем.
+        texts.today_plan(
+            today, week.overdue, None if user.streak_paused_at else user.daily_norm_min
+        ),
         reply_markup=keyboards.backlog(items),
     )
 

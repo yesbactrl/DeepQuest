@@ -13,7 +13,8 @@ export interface PlanDay {
 
 export interface Plan {
   today: string;
-  norm_min: number;
+  // null — норма на паузе: нагрузку дня не с чем сравнивать.
+  norm_min: number | null;
   days: PlanDay[];
   unplanned: Task[];
   overdue: Task[];

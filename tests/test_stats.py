@@ -139,6 +139,82 @@ async def test_close_days_with_weekly_freezes(
     assert [m.status for m in info.recent] == ["met", "frozen", "frozen", "missed", "met", "today"]
 
 
+async def _stop_timer(session: AsyncSession) -> None:
+    """Таймер из сида идёт с 22-го: останавливаем, чтобы пауза шла без работы."""
+    for entry in await session.scalars(select(TimeEntry).where(TimeEntry.ended_at.is_(None))):
+        entry.ended_at = NOW
+    await session.flush()
+
+
+async def test_pause_freezes_streak(
+    sessionmaker: async_sessionmaker[AsyncSession], seed: Seed
+) -> None:
+    async with sessionmaker() as session:
+        user = await _user(session, seed)
+        await _stop_timer(session)
+        # Пауза 22-го: дни до неё закрываются как обычно, сегодняшний — уже нет.
+        await streak.pause(session, user, NOW)
+        later = NOW + timedelta(days=3)
+        paused = await streak.streak_info(session, user, later)
+        assert (paused.paused, paused.current, paused.best) == (True, 1, 3)
+        # На паузе дни не закрываются, даже если прошло три дня.
+        days = list(await session.scalars(select(DayStats.logical_date)))
+        assert max(days).day == 21
+
+        await streak.resume(session, user, later)
+        info = await streak.streak_info(session, user, later)
+        await session.commit()
+        rows = list(await session.scalars(select(DayStats).order_by(DayStats.logical_date)))
+
+    # Дни паузы — ни за, ни против: стрик сквозь них не рвётся и не растёт.
+    assert [(r.logical_date.day, r.status) for r in rows[-3:]] == [
+        (22, DayStatus.PAUSED),
+        (23, DayStatus.PAUSED),
+        (24, DayStatus.PAUSED),
+    ]
+    assert (info.paused, info.current, info.best) == (False, 1, 3)
+    assert [m.status for m in info.recent][-4:] == ["paused", "paused", "paused", "today"]
+
+
+async def test_after_pause_missed_day_still_breaks_streak(
+    sessionmaker: async_sessionmaker[AsyncSession], seed: Seed
+) -> None:
+    async with sessionmaker() as session:
+        user = await _user(session, seed)
+        await _stop_timer(session)
+        await streak.pause(session, user, NOW)
+        resumed = NOW + timedelta(days=2)
+        await streak.resume(session, user, resumed)
+        # 24-е без работы: заморозка недели 43 уже потрачена — пропуск.
+        info = await streak.streak_info(session, user, resumed + timedelta(days=1))
+        rows = list(await session.scalars(select(DayStats).order_by(DayStats.logical_date)))
+
+    assert (rows[-1].logical_date.day, rows[-1].status) == (24, DayStatus.MISSED)
+    assert info.current == 0
+
+
+async def test_streak_pause_api_and_bot(
+    client: httpx.AsyncClient, sessionmaker: async_sessionmaker[AsyncSession], seed: Seed
+) -> None:
+    paused = (await client.patch("/api/me", json={"streak_enabled": False})).json()
+    assert paused["streak_paused"] is True
+    summary = (await client.get("/api/summary")).json()
+    assert summary["streak"]["paused"] is True
+    plan_data = (await client.get("/api/plan")).json()
+    assert plan_data["norm_min"] is None
+    chart = (await client.get("/api/stats/series", params={"metric": "minutes"})).json()
+    assert chart["norm_min"] is None
+
+    harness = BotHarness(sessionmaker, allowed_ids=[ME])
+    await harness.send(ME, "/stats")
+    assert "норма и стрик на паузе" in harness.last_text
+    assert "Стрик:" not in harness.last_text
+
+    resumed = (await client.patch("/api/me", json={"streak_enabled": True})).json()
+    assert resumed["streak_paused"] is False
+    assert (await client.get("/api/summary")).json()["streak"]["paused"] is False
+
+
 async def test_close_days_is_idempotent_and_keeps_norm_snapshot(
     sessionmaker: async_sessionmaker[AsyncSession], seed: Seed
 ) -> None:

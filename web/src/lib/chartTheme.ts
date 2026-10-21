@@ -56,4 +56,6 @@ export const DAY_STATUS = {
   met: { color: "#0ca30c", label: "норма выполнена" },
   frozen: { color: "#6da7ec", label: "заморозка" },
   missed: { color: "#d03b3b", label: "пропуск" },
+  // Норма и стрик были на паузе: день ни за, ни против.
+  paused: { color: "#a3a29c", label: "пауза" },
 } as const;

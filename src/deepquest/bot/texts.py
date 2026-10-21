@@ -513,7 +513,7 @@ MONTH_NAMES = [
     "январь", "февраль", "март", "апрель", "май", "июнь",
     "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь",
 ]  # fmt: skip
-DAY_MARKS = {"met": "🟩", "frozen": "🟦", "missed": "🟥"}
+DAY_MARKS = {"met": "🟩", "frozen": "🟦", "missed": "🟥", "paused": "⬜"}
 
 
 def _day_mark(mark: DayMark) -> str:
@@ -542,23 +542,28 @@ def stats(character: Character) -> str:
         else f"до нормы {format_minutes(streak.norm_min - streak.today_focus_min)}"
     )
     days = plural(streak.current, "день", "дня", "дней")
-    return "\n".join(
-        [
-            "📊 <b>Статистика</b>",
-            "",
-            f"Уровень <b>{total.level}</b> · {total.xp} XP "
-            f"(до {total.level + 1}-го — {total.next_xp - total.xp} XP)",
-            f"Сезон «{month}»: уровень <b>{season.level}</b> · {season.xp} XP",
+    lines = [
+        "📊 <b>Статистика</b>",
+        "",
+        f"Уровень <b>{total.level}</b> · {total.xp} XP "
+        f"(до {total.level + 1}-го — {total.next_xp - total.xp} XP)",
+        f"Сезон «{month}»: уровень <b>{season.level}</b> · {season.xp} XP",
+    ]
+    if streak.paused:
+        lines.append(f"Сегодня: {format_minutes(streak.today_focus_min)} · норма и стрик на паузе")
+    else:
+        lines += [
             f"Сегодня: {format_minutes(streak.today_focus_min)} из "
             f"{format_minutes(streak.norm_min)} — {today}",
             f"Стрик: <b>{streak.current}</b> {days} · лучший {streak.best} · "
             f"заморозок осталось {streak.freezes_left} из {streak.freezes_per_week}",
             "",
             "".join(_day_mark(mark) for mark in streak.recent),
-            "🟩 норма · 🟦 заморозка · 🟥 пропуск",
-            *(["", "<b>Статы</b>", *map(_stat_line, character.stats)] if character.stats else []),
+            "🟩 норма · 🟦 заморозка · 🟥 пропуск · ⬜ пауза",
         ]
-    )
+    if character.stats:
+        lines += ["", "<b>Статы</b>", *map(_stat_line, character.stats)]
+    return "\n".join(lines)
 
 
 # Дневник
@@ -622,7 +627,7 @@ def _plan_line(number: int, task: Task) -> list[str]:
     return lines
 
 
-def today_plan(day: PlanDay, overdue: list[Task], norm_min: int) -> str:
+def today_plan(day: PlanDay, overdue: list[Task], norm_min: int | None) -> str:
     """План на сегодня: номера — у незакрытых (по ним кнопки), сделанное — галочкой."""
     active = [task for task in day.tasks if task.status not in FINISHED]
     finished = [task for task in day.tasks if task.status in FINISHED]
@@ -630,9 +635,11 @@ def today_plan(day: PlanDay, overdue: list[Task], norm_min: int) -> str:
         return TODAY_EMPTY
     header = (
         f"<b>Сегодня, {WEEKDAY_NAMES[day.day.weekday()]} {day.day.day} "
-        f"{MONTHS_GENITIVE[day.day.month - 1]}</b> · ~{format_minutes(day.load_min)} "
-        f"из {format_minutes(norm_min)} нормы"
+        f"{MONTHS_GENITIVE[day.day.month - 1]}</b> · ~{format_minutes(day.load_min)}"
     )
+    # norm_min = None — норма на паузе: сравнивать не с чем.
+    if norm_min is not None:
+        header += f" из {format_minutes(norm_min)} нормы"
     if day.load_xp:
         header += f" · +{day.load_xp} XP"
     lines = [header, ""]
@@ -646,6 +653,6 @@ def today_plan(day: PlanDay, overdue: list[Task], norm_min: int) -> str:
         for task in overdue:
             number += 1
             lines += _plan_line(number, task)
-    if day.load_min > norm_min:
+    if norm_min is not None and day.load_min > norm_min:
         lines += ["", f"⚠️ Набрано больше нормы на {format_minutes(day.load_min - norm_min)}."]
     return "\n".join(lines)

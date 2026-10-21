@@ -51,7 +51,7 @@ export interface Level {
 
 export interface DayMark {
   day: string;
-  status: "met" | "missed" | "frozen" | "today";
+  status: "met" | "missed" | "frozen" | "paused" | "today";
   focus_min: number;
   norm_min: number;
 }
@@ -70,6 +70,8 @@ export interface Summary {
     freezes_left: number;
     freezes_per_week: number;
     recent: DayMark[];
+    // Норма и стрик на паузе: их не показываем, стрик заморожен.
+    paused: boolean;
   };
 }
 
@@ -116,5 +118,18 @@ export function useChartData(config: ChartConfig) {
     // Пока в редакторе меняются настройки, старый график не исчезает.
     placeholderData: keepPreviousData,
     refetchInterval: 60_000,
+  });
+}
+
+// Поставить норму и стрик на паузу (enabled = false) или включить снова.
+export function useStreakEnabled() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) => api.patch("/me", { streak_enabled: enabled }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ["summary"] });
+      void client.invalidateQueries({ queryKey: ["character"] });
+      void client.invalidateQueries({ queryKey: ["plan"] });
+    },
   });
 }

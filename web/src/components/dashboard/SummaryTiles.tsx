@@ -1,8 +1,21 @@
-import { Box, Group, Paper, Progress, SimpleGrid, Skeleton, Stack, Text, ThemeIcon, Tooltip } from "@mantine/core";
-import { IconCheck, IconFlame } from "@tabler/icons-react";
+import {
+  Box,
+  Button,
+  Group,
+  Paper,
+  Progress,
+  SimpleGrid,
+  Skeleton,
+  Stack,
+  Text,
+  ThemeIcon,
+  Tooltip,
+} from "@mantine/core";
+import { modals } from "@mantine/modals";
+import { IconCheck, IconFlame, IconPlayerPause, IconPlayerPlay } from "@tabler/icons-react";
 import type { ReactNode } from "react";
 
-import type { DayMark, Summary } from "../../api/dashboard";
+import { type DayMark, type Summary, useStreakEnabled } from "../../api/dashboard";
 import { DAY_STATUS } from "../../lib/chartTheme";
 import { formatMinutes, plural } from "../../lib/format";
 
@@ -84,6 +97,66 @@ function DayStrip({ days }: { days: DayMark[] }) {
   );
 }
 
+function PauseButton() {
+  const toggle = useStreakEnabled();
+  const confirm = () =>
+    modals.openConfirmModal({
+      title: "Поставить норму и стрик на паузу?",
+      children: (
+        <Text size="sm">
+          Дни перестанут закрываться, стрик замёрзнет на текущем значении и не порвётся. Норма
+          пропадёт с дашборда и из плана. Включить обратно можно здесь же — дни паузы ни за, ни
+          против не засчитаются.
+        </Text>
+      ),
+      labels: { confirm: "На паузу", cancel: "Отмена" },
+      onConfirm: () => toggle.mutate(false),
+    });
+  return (
+    <Button
+      size="compact-xs"
+      variant="subtle"
+      color="gray"
+      leftSection={<IconPlayerPause size={12} />}
+      loading={toggle.isPending}
+      onClick={confirm}
+    >
+      Пауза
+    </Button>
+  );
+}
+
+// Норма и стрик на паузе: вместо двух плиток — одна, с кнопкой включить обратно.
+function PausedTile({ summary }: { summary: Summary }) {
+  const toggle = useStreakEnabled();
+  const { streak } = summary;
+  return (
+    <Paper withBorder p="md">
+      <Stack gap={6}>
+        <Text size="xs" c="dimmed" tt="uppercase" fw={600}>
+          Норма и стрик
+        </Text>
+        <Text fw={600}>На паузе</Text>
+        <Text size="sm" c="dimmed">
+          Сегодня {formatMinutes(streak.today_focus_min)} в работе. Стрик заморожен на{" "}
+          {streak.current} {plural(streak.current, "дне", "днях", "днях")} и подождёт.
+        </Text>
+        <Group>
+          <Button
+            size="xs"
+            variant="light"
+            leftSection={<IconPlayerPlay size={14} />}
+            loading={toggle.isPending}
+            onClick={() => toggle.mutate(true)}
+          >
+            Включить снова
+          </Button>
+        </Group>
+      </Stack>
+    </Paper>
+  );
+}
+
 export function SummaryTiles({ summary }: { summary: Summary | undefined }) {
   if (!summary) {
     return (
@@ -118,40 +191,49 @@ export function SummaryTiles({ summary }: { summary: Summary | undefined }) {
         </Text>
       </Tile>
 
-      <Tile label="Сегодня">
-        <Group gap="xs" align="center">
-          <Big>{formatMinutes(streak.today_focus_min)}</Big>
-          {streak.today_met && (
-            <ThemeIcon color="green" radius="xl" size="sm">
-              <IconCheck size={14} />
-            </ThemeIcon>
-          )}
-        </Group>
-        <Progress
-          value={todayShare}
-          size="sm"
-          color={streak.today_met ? "green" : undefined}
-          aria-label="Норма на сегодня"
-        />
-        <Text size="sm" c="dimmed">
-          {streak.today_met
-            ? `норма ${formatMinutes(streak.norm_min)} выполнена`
-            : `из ${formatMinutes(streak.norm_min)} нормы, осталось ${formatMinutes(streak.norm_min - streak.today_focus_min)}`}
-        </Text>
-      </Tile>
+      {streak.paused ? (
+        <PausedTile summary={summary} />
+      ) : (
+        <>
+          <Tile label="Сегодня">
+            <Group gap="xs" align="center">
+              <Big>{formatMinutes(streak.today_focus_min)}</Big>
+              {streak.today_met && (
+                <ThemeIcon color="green" radius="xl" size="sm">
+                  <IconCheck size={14} />
+                </ThemeIcon>
+              )}
+            </Group>
+            <Progress
+              value={todayShare}
+              size="sm"
+              color={streak.today_met ? "green" : undefined}
+              aria-label="Норма на сегодня"
+            />
+            <Text size="sm" c="dimmed">
+              {streak.today_met
+                ? `норма ${formatMinutes(streak.norm_min)} выполнена`
+                : `из ${formatMinutes(streak.norm_min)} нормы, осталось ${formatMinutes(streak.norm_min - streak.today_focus_min)}`}
+            </Text>
+          </Tile>
 
-      <Tile label="Стрик">
-        <Group gap={6} align="center">
-          <IconFlame size={28} stroke={1.6} color="var(--mantine-color-orange-6)" />
-          <Big>
-            {streak.current} {plural(streak.current, "день", "дня", "дней")}
-          </Big>
-        </Group>
-        <Text size="sm" c="dimmed">
-          лучший {streak.best} · заморозок {streak.freezes_left} из {streak.freezes_per_week}
-        </Text>
-        <DayStrip days={streak.recent} />
-      </Tile>
+          <Tile label="Стрик">
+            <Group gap={6} align="center">
+              <IconFlame size={28} stroke={1.6} color="var(--mantine-color-orange-6)" />
+              <Big>
+                {streak.current} {plural(streak.current, "день", "дня", "дней")}
+              </Big>
+            </Group>
+            <Group justify="space-between" gap="xs">
+              <Text size="sm" c="dimmed">
+                лучший {streak.best} · заморозок {streak.freezes_left} из {streak.freezes_per_week}
+              </Text>
+              <PauseButton />
+            </Group>
+            <DayStrip days={streak.recent} />
+          </Tile>
+        </>
+      )}
     </SimpleGrid>
   );
 }

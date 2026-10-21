@@ -61,8 +61,8 @@ export function CharacterHeader({ character }: { character: Character }) {
             <Text size="sm" c="dimmed">
               Стрик
             </Text>
-            <Title order={2}>
-              {streak.current} {plural(streak.current, "день", "дня", "дней")}
+            <Title order={2} c={streak.paused ? "dimmed" : undefined}>
+              {streak.paused ? "на паузе" : `${streak.current} ${plural(streak.current, "день", "дня", "дней")}`}
             </Title>
           </Stack>
         </Group>

@@ -32,6 +32,7 @@ class MeOut(BaseModel):
     evening_at: time
     day_boundary_hour: int
     onboarded: bool
+    streak_paused: bool
 
     @classmethod
     def of(cls, user: User) -> MeOut:
@@ -42,7 +43,13 @@ class MeOut(BaseModel):
             evening_at=user.evening_at,
             day_boundary_hour=user.day_boundary_hour,
             onboarded=user.onboarded_at is not None,
+            streak_paused=user.streak_paused_at is not None,
         )
+
+
+class MeUpdate(BaseModel):
+    # False — поставить норму и стрик на паузу, True — снова считать.
+    streak_enabled: bool | None = None
 
 
 class GoalStatsOut(BaseModel):
@@ -327,6 +334,8 @@ class StreakOut(BaseModel):
     freezes_left: int
     freezes_per_week: int
     recent: list[DayMarkOut]
+    # Норма и стрик на паузе: интерфейс их прячет.
+    paused: bool
 
 
 class SummaryOut(BaseModel):
@@ -351,6 +360,7 @@ class SummaryOut(BaseModel):
                 today_met=streak.today_met,
                 freezes_left=streak.freezes_left,
                 freezes_per_week=streak.freezes_per_week,
+                paused=streak.paused,
                 recent=[
                     DayMarkOut(
                         day=m.day, status=m.status, focus_min=m.focus_min, norm_min=m.norm_min
@@ -605,7 +615,8 @@ class PlanDayOut(BaseModel):
 
 class PlanOut(BaseModel):
     today: date
-    norm_min: int
+    # None — норма на паузе: нагрузку дня не с чем сравнивать.
+    norm_min: int | None
     days: list[PlanDayOut]
     unplanned: list[TaskOut]
     overdue: list[TaskOut]

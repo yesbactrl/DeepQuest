@@ -63,6 +63,8 @@ class User(Base):
     onboarded_at: Mapped[datetime | None]
     # Графики по умолчанию добавляются один раз: если все удалить, сами не вернутся.
     dashboard_seeded: Mapped[bool] = mapped_column(default=False, server_default=text("0"))
+    # Норма и стрик на паузе с этого момента: дни не закрываются, стрик не рвётся.
+    streak_paused_at: Mapped[datetime | None]
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 
@@ -267,6 +269,7 @@ class DayStatus(StrEnum):
     MET = "met"  # норма выполнена
     MISSED = "missed"
     FROZEN = "frozen"  # норма не выполнена, но день спасла заморозка — стрик не рвётся
+    PAUSED = "paused"  # норма и стрик были на паузе: день не считается ни за, ни против
 
 
 class DayStats(Base):

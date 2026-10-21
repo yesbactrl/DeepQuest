@@ -29,7 +29,7 @@ async def get_plan(session: SessionDep, user: UserDep) -> PlanOut:
 
     return PlanOut(
         today=week.today,
-        norm_min=user.daily_norm_min,
+        norm_min=None if user.streak_paused_at else user.daily_norm_min,
         days=[
             PlanDayOut(
                 day=day.day, tasks=out(day.tasks), load_min=day.load_min, load_xp=day.load_xp

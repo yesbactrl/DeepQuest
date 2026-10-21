@@ -240,9 +240,12 @@ async def chart_data(
             (s for s in series if s.total),
             key=lambda s: (s.key == NO_GOAL, -s.total),
         )
+    # Линия нормы — на минутах по дням, если норма не на паузе.
     norm = (
         user.daily_norm_min
-        if config.metric == Metric.MINUTES and config.bucket == Bucket.DAY
+        if config.metric == Metric.MINUTES
+        and config.bucket == Bucket.DAY
+        and user.streak_paused_at is None
         else None
     )
     return ChartData(
