@@ -485,7 +485,9 @@ class XpRulesOut(BaseModel):
     cap_factor: int
     value_mults: list[float]
     validation_mults: dict[str, float]
-    honor_mode_mult: float
+    # Без пруфа и со скрином или ссылкой.
+    no_proof_mult: float
+    proof_mult: float
     weak_stat_mult: float
 
 

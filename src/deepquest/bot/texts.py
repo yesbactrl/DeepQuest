@@ -432,7 +432,7 @@ def ask_report(task: Task, total_min: int) -> str:
         lines = [f"✅ <b>{escape(task.title)}</b>: {format_minutes(total_min)} по таймеру.", ""]
     lines.append(
         "Что получилось? Напиши коротко: что сделал и что понял. Приложи пруф — скрин или "
-        "ссылку. Без пруфа засчитаю «на честном слове» с ×0.8. Не хочешь отчёт — "
+        "ссылку, если есть — для истории, за это ×1.1. Не хочешь отчёт — "
         "«Засчитать без проверки»."
     )
     return "\n".join(lines)
@@ -489,7 +489,7 @@ def why(explanation: Explanation, task: Task) -> str:
             "но засчитываю не больше двух оценок задачи)"
         )
     value_reason = f" — {escape(task.mult_reason)}" if task.mult_reason else ""
-    proof = "на честном слове" if b.honor_mode else "есть"
+    proof = "нет" if b.honor_mode else "есть, бонус за данные"
     lines = [
         f"<b>Почему {b.amount} XP</b>",
         "",

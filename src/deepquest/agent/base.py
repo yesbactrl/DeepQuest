@@ -179,7 +179,7 @@ def render_report(report: ReportContext) -> str:
     if report.other_files:
         work.append(f"Файлы, которые ты не видишь: {report.other_files}.")
     if report.honor_mode:
-        work.append("Пруфа нет: режим «на честном слове».")
+        work.append("Пруфа нет: это нормально, оценивай по тексту отчёта.")
     parts.append(_block("work", "\n".join(work)))
     parts.append(_block("report", report.report_text or "(текста нет)"))
 

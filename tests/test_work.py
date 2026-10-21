@@ -41,10 +41,11 @@ def test_logical_day_ends_at_boundary_hour() -> None:
 @pytest.mark.parametrize(
     ("actual", "estimate", "mult", "kind", "honor", "amount"),
     [
-        (120, 120, 1.5, ValidationVerdict.ACCEPTED, False, 180),  # пример из спеки
-        (300, 60, 1.0, ValidationVerdict.ACCEPTED, False, 120),  # потолок — две оценки
-        (60, 60, 1.0, ValidationVerdict.ACCEPTED, True, 48),  # на честном слове
-        (60, 60, 1.5, ValidationVerdict.PARTIAL, False, 63),
+        (120, 120, 1.5, ValidationVerdict.ACCEPTED, True, 180),  # пример из спеки, без пруфа
+        (120, 120, 1.5, ValidationVerdict.ACCEPTED, False, 198),  # с пруфом — ×1.1
+        (300, 60, 1.0, ValidationVerdict.ACCEPTED, False, 132),  # потолок — две оценки
+        (60, 60, 1.0, ValidationVerdict.ACCEPTED, True, 60),  # без пруфа — ×1
+        (60, 60, 1.5, ValidationVerdict.PARTIAL, False, 69),
         (60, 60, 2.0, ValidationVerdict.REJECTED, False, 0),
         (0, 60, 1.5, ValidationVerdict.ACCEPTED, False, 0),
     ],
@@ -151,9 +152,10 @@ async def test_dispute_writes_correction_not_rewrite(
         await xp.record_task_xp(session, user, task, accepted, T0)
         correction = await xp.record_task_xp(session, user, task, partial, T0)
 
-        assert (correction.kind, correction.amount) == (XpKind.CORRECTION, 126 - 180)
-        assert await xp.task_xp(session, task) == 126
-        assert await xp.total_xp(session, user) == 126
+        # С пруфом: 180 × 1.1 = 198, частично — 126 × 1.1 = 139.
+        assert (correction.kind, correction.amount) == (XpKind.CORRECTION, 139 - 198)
+        assert await xp.task_xp(session, task) == 139
+        assert await xp.total_xp(session, user) == 139
 
 
 # Бот: от «Старт» до XP
@@ -202,18 +204,20 @@ async def test_start_done_report_and_xp(
     assert report.links == ("https://ads.tiktok.com/c/1",)
     assert report.goal == "Свой доход"
     assert not report.honor_mode
-    assert harness.last_text.startswith("✅ Засчитано · +180 XP")
+    # Со ссылкой: 120 × 1.5 × 1 × 1.1
+    assert harness.last_text.startswith("✅ Засчитано · +198 XP")
     assert "Кампания запущена — это реальный шаг." in harness.last_text
-    assert "Всего: 180 XP" in harness.last_text
+    assert "Всего: 198 XP" in harness.last_text
 
     await harness.tap(ME, texts.WHY_BUTTON)
-    assert "<b>Почему 180 XP</b>" in harness.last_text
-    assert "120 мин × 1.5 × 1 × 1 = 180 XP" in harness.last_text
+    assert "<b>Почему 198 XP</b>" in harness.last_text
+    assert "• Пруф: есть, бонус за данные ×1.1" in harness.last_text
+    assert "120 мин × 1.5 × 1 × 1.1 = 198 XP" in harness.last_text
 
     assert (await _task(sessionmaker, seed.first.id)).status == TaskStatus.DONE
     async with sessionmaker() as session:
         [event] = await session.scalars(select(XpEvent))
-        assert (event.amount, event.kind, event.season) == (180, XpKind.TASK, "2026-10")
+        assert (event.amount, event.kind, event.season) == (198, XpKind.TASK, "2026-10")
 
 
 async def test_screenshot_proof_reaches_agent(
@@ -246,8 +250,8 @@ async def test_report_without_proof_is_honor_mode(
     await harness.send(ME, "Сделал, но скрина нет")
 
     assert harness.agent.reports[0].honor_mode
-    # 60 мин × 1.5 × 1.0 × 0.8
-    assert harness.last_text.startswith("✅ Засчитано · +72 XP")
+    # 60 мин × 1.5 × 1.0 × 1 — без пруфа XP не снижается.
+    assert harness.last_text.startswith("✅ Засчитано · +90 XP")
 
 
 async def test_pause_resume_and_switch(
@@ -313,9 +317,9 @@ async def test_done_without_timer_counts_estimate(
     assert "засчитаю по оценке — 2 ч" in harness.last_text
     await harness.send(ME, "Запустил: https://ads.tiktok.com/c/1")
 
-    # Таймер не запускали: 120 мин по оценке × 1.5.
+    # Таймер не запускали: 120 мин по оценке × 1.5 × 1.1 за ссылку.
     assert harness.agent.reports[0].actual_min == 120
-    assert harness.last_text.startswith("✅ Засчитано · +180 XP")
+    assert harness.last_text.startswith("✅ Засчитано · +198 XP")
     async with sessionmaker() as session:
         [entry] = await session.scalars(select(TimeEntry))
         # Время записано отрезком: его видят норма, стрик и графики.
@@ -340,7 +344,7 @@ async def test_agent_down_then_recheck(
 
     # Скрин скачан заново из отчёта.
     assert len(harness.agent.reports[-1].images) == 1
-    assert harness.last_text.startswith("🟡 Засчитано частично · +63 XP")
+    assert harness.last_text.startswith("🟡 Засчитано частично · +69 XP")
 
 
 async def test_dispute_once(sessionmaker: async_sessionmaker[AsyncSession], seed: Seed) -> None:
@@ -363,8 +367,8 @@ async def test_dispute_once(sessionmaker: async_sessionmaker[AsyncSession], seed
     disputed = harness.agent.reports[-1]
     assert disputed.dispute == "Кампания запущена, id 123, бюджет потрачен"
     assert disputed.previous_verdict == "rejected"
-    # Без пруфа: 120 × 1.5 × 1.0 × 0.8 = 144
-    assert harness.last_text.startswith("⚖️ Пересмотрел. ✅ Засчитано · +144 XP")
+    # Без пруфа: 120 × 1.5 × 1.0 × 1 = 180
+    assert harness.last_text.startswith("⚖️ Пересмотрел. ✅ Засчитано · +180 XP")
     with pytest.raises(AssertionError):
         harness.button(texts.DISPUTE_BUTTON)
     assert (await _task(sessionmaker, seed.first.id)).status == TaskStatus.DONE
@@ -372,7 +376,7 @@ async def test_dispute_once(sessionmaker: async_sessionmaker[AsyncSession], seed
         validations = list(await session.scalars(select(Validation.is_dispute)))
         assert validations == [False, True]
         amounts = list(await session.scalars(select(XpEvent.amount).order_by(XpEvent.id)))
-        assert amounts == [0, 144]
+        assert amounts == [0, 180]
 
 
 async def test_running_task_shows_in_backlog(
@@ -425,8 +429,8 @@ async def test_self_accept_in_bot(
     await harness.tap(ME, texts.SELF_ACCEPT_BUTTON)
 
     assert harness.agent.reports == []
-    # 60 мин × 1.5 × 1 × 0.8 (без пруфа)
-    assert harness.last_text.startswith("✅ Засчитано без проверки · +72 XP общий")
+    # 60 мин × 1.5 × 1 × 1 (без пруфа)
+    assert harness.last_text.startswith("✅ Засчитано без проверки · +90 XP общий")
     assert texts.DISPUTE_BUTTON not in str(harness.screens[-1].reply_markup)
     assert (await _task(sessionmaker, seed.first.id)).status == TaskStatus.DONE
     # Отчёт после этого уже не ждём: обычный текст — снова новая мысль.

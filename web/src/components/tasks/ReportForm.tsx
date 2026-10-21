@@ -162,8 +162,8 @@ export function ReportForm({ task }: { task: TaskDetail }) {
         {report.isPending && !report.variables?.selfCheck
           ? "Агент проверяет отчёт — обычно 5–10 секунд"
           : files.length === 0 && !hasLink
-            ? "Без скриншота или ссылки отчёт засчитается «на честном слове» с ×0.8."
-            : "Пруф есть: без понижения за «честное слово»."}
+            ? "Пруф необязателен. Скриншот или ссылка — для истории и +10% к XP."
+            : "Пруф есть: ×1.1 к XP."}
       </Text>
       {report.error && (
         <Alert color="red" variant="light">

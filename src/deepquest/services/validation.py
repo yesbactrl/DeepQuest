@@ -102,7 +102,7 @@ async def accept_without_check(
     spent_min: int | None = None,
 ) -> ValidationOutcome:
     """Засчитать задачу самому, без агента: вердикт «засчитано», XP по той же формуле.
-    Пруф по-прежнему важен: без скрина или ссылки — «на честном слове» с ×0.8."""
+    Пруф и тут бонус: со скрином или ссылкой ×1.1, без него ×1."""
     report = await _new_report(session, user, task, report_input, now, spent_min)
     validation = Validation(
         task_id=task.id,

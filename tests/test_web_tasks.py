@@ -214,11 +214,12 @@ async def test_report_with_screenshot(
     [report] = web.agent.reports
     assert [(i.media_type, i.data) for i in report.images] == [("image/png", PNG)]
     assert report.links == ("https://ads.example/1",)
-    assert (checked["xp_delta"], checked["total_xp"]) == (180, 180)
+    # Скрин и ссылка: ×1.1 к XP.
+    assert (checked["xp_delta"], checked["total_xp"]) == (198, 198)
     detail = checked["task"]
     assert detail["status"] == "done"
     assert detail["validation"]["comment"] == "Запуск виден."
-    assert detail["breakdown"]["amount"] == 180
+    assert (detail["breakdown"]["amount"], detail["breakdown"]["proof_mult"]) == (198, 1.1)
     screenshot, link = detail["report"]["proofs"]
     assert (screenshot["name"], screenshot["is_image"]) == ("screen.png", True)
     assert (await web.client.get(screenshot["url"])).content == PNG
@@ -275,8 +276,8 @@ async def test_dispute_once(web: Web, sessionmaker: async_sessionmaker[AsyncSess
     ).json()
 
     assert web.agent.reports[-1].dispute == "вот факты"
-    # Без пруфа: 60 × 1.0 × 1.0 × 0.8
-    assert (disputed["xp_delta"], disputed["task"]["status"]) == (48, "done")
+    # Без пруфа: 60 × 1.0 × 1.0 × 1
+    assert (disputed["xp_delta"], disputed["task"]["status"]) == (60, "done")
     assert not disputed["task"]["can_dispute"]
     again = await web.client.post(f"/api/tasks/{task['id']}/dispute", json={"argument": "ещё"})
     assert again.status_code == 409
@@ -352,7 +353,8 @@ async def test_report_without_timer_counts_estimate(
     ).json()
 
     assert web.agent.reports[0].actual_min == 60
-    assert result["xp_delta"] == 90
+    # 60 по оценке × 1.5 × 1.1 за ссылку
+    assert result["xp_delta"] == 99
     assert await _entries(sessionmaker) == [(60, "logged")]
 
 
@@ -373,7 +375,8 @@ async def test_report_with_spent_time(
     ).json()
 
     assert web.agent.reports[0].actual_min == 45
-    assert result["xp_delta"] == 45
+    # 45 × 1.1 за ссылку
+    assert result["xp_delta"] == 50
     assert await _entries(sessionmaker) == [(30, "done"), (15, "logged")]
 
 
@@ -384,16 +387,16 @@ async def test_change_time_recounts_xp(
     web.agent.validations.append(verdict("partial"))
     await web.client.post(f"/api/tasks/{task['id']}/done")
     await web.client.post(f"/api/tasks/{task['id']}/report", data={"text": "Сделал"})
-    # 60 мин × 0.7 × 0.8 = 34
+    # 60 мин × 0.7 = 42
 
     more = (await web.client.post(f"/api/tasks/{task['id']}/time", json={"spent_min": 90})).json()
-    # 90 × 0.7 × 0.8 = 50: поправка +16, агента заново не спрашиваем.
-    assert (more["xp_delta"], more["task"]["xp"], more["task"]["spent_min"]) == (16, 50, 90)
+    # 90 × 0.7 = 63: поправка +21, агента заново не спрашиваем.
+    assert (more["xp_delta"], more["task"]["xp"], more["task"]["spent_min"]) == (21, 63, 90)
     assert more["task"]["breakdown"]["actual_min"] == 90
     assert len(web.agent.reports) == 1
 
     less = (await web.client.post(f"/api/tasks/{task['id']}/time", json={"spent_min": 20})).json()
-    assert (less["xp_delta"], less["task"]["xp"]) == (-39, 11)
+    assert (less["xp_delta"], less["task"]["xp"]) == (-49, 14)
     assert await _entries(sessionmaker) == [(20, "logged")]
 
 
@@ -420,8 +423,8 @@ async def test_self_accept_without_agent(web: Web) -> None:
     ).json()
 
     assert web.agent.reports == []
-    # Без отчёта и пруфа: 60 мин по оценке × 1.5 × 1 × 0.8.
-    assert result["xp_delta"] == 72
+    # Без отчёта и пруфа: 60 мин по оценке × 1.5 × 1 × 1.
+    assert result["xp_delta"] == 90
     detail = result["task"]
     assert detail["status"] == "done"
     assert detail["validation"]["self_check"] is True
@@ -429,7 +432,7 @@ async def test_self_accept_without_agent(web: Web) -> None:
     assert detail["can_dispute"] is False
 
 
-async def test_self_accept_with_proof_has_no_honor_penalty(web: Web) -> None:
+async def test_self_accept_with_proof_gets_bonus(web: Web) -> None:
     task = await _open_task(web, minutes=60, mult=1.0)
     await web.client.post(f"/api/tasks/{task['id']}/done")
 
@@ -440,5 +443,6 @@ async def test_self_accept_with_proof_has_no_honor_penalty(web: Web) -> None:
         )
     ).json()
 
-    assert result["xp_delta"] == 60
+    # Со ссылкой — бонус за данные: 60 × 1.1.
+    assert result["xp_delta"] == 66
     assert web.agent.reports == []

@@ -94,7 +94,7 @@ function Breakdown({ task }: { task: TaskDetail }) {
       "Проверка отчёта",
       `${task.validation?.self_check ? "без агента" : VERDICT[b.verdict].label} ${formatMult(b.validation_mult)}`,
     ],
-    ["Пруф", `${b.honor_mode ? "на честном слове" : "есть"} ${formatMult(b.proof_mult)}`],
+    ["Пруф", `${b.honor_mode ? "нет" : "есть, бонус за данные"} ${formatMult(b.proof_mult)}`],
     ...(b.weak_mult !== 1
       ? [["Самый слабый стат", `${formatMult(b.weak_mult)} — бонус отстающей цели`] as [string, ReactNode]]
       : []),
@@ -147,7 +147,7 @@ function ReportView({ task }: { task: TaskDetail }) {
       ))}
       {report.honor_mode && (
         <Text size="xs" c="dimmed">
-          Без пруфа — «на честном слове».
+          Без пруфа.
         </Text>
       )}
     </Stack>

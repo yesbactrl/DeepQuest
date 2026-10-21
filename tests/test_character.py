@@ -143,12 +143,12 @@ async def test_weakest_stat_gets_bonus_and_keeps_it_on_dispute(
 
     await _report(sessionmaker, harness, seed, seed.sport)
 
-    # 60 мин × 1 × 1 × 1 × 1.2: Здоровье отстаёт от Капитала.
-    assert harness.last_text.startswith("✅ Засчитано · +72 XP общий · +72 Здоровье · +72 Спорт")
+    # 60 мин × 1 × 1 × 1.1 (ссылка) × 1.2: Здоровье отстаёт от Капитала.
+    assert harness.last_text.startswith("✅ Засчитано · +79 XP общий · +79 Здоровье · +79 Спорт")
     assert "💪 «Здоровье» — самый слабый стат: ×1.2 к XP" in harness.last_text
     await harness.tap(ME, texts.WHY_BUTTON)
     assert "• Самый слабый стат: ×1.2" in harness.last_text
-    assert "60 мин × 1 × 1 × 1 × 1.2 = 72 XP" in harness.last_text
+    assert "60 мин × 1 × 1 × 1.1 × 1.2 = 79 XP" in harness.last_text
 
     # Теперь Здоровье впереди, но пересмотр не отнимает бонус, который был при сдаче.
     async with sessionmaker() as session:
@@ -156,11 +156,11 @@ async def test_weakest_stat_gets_bonus_and_keeps_it_on_dispute(
         await session.commit()
     await harness.tap(ME, texts.DISPUTE_BUTTON)
     await harness.send(ME, "Это была полная тренировка")
-    # 60 × 0.7 × 1.2 = 50 — поправка −22.
-    assert harness.last_text.startswith("⚖️ Пересмотрел. 🟡 Засчитано частично · -22 XP общий")
+    # 60 × 0.7 × 1.1 × 1.2 = 55 — поправка −24.
+    assert harness.last_text.startswith("⚖️ Пересмотрел. 🟡 Засчитано частично · -24 XP общий")
     async with sessionmaker() as session:
         events = list(await session.scalars(select(XpEvent).where(XpEvent.task_id.is_not(None))))
-        assert [(e.amount, e.breakdown["weak_mult"]) for e in events] == [(72, 1.2), (-22, 1.2)]
+        assert [(e.amount, e.breakdown["weak_mult"]) for e in events] == [(79, 1.2), (-24, 1.2)]
 
 
 async def test_stronger_stat_gets_no_bonus(
@@ -174,7 +174,7 @@ async def test_stronger_stat_gets_no_bonus(
 
     await _report(sessionmaker, harness, seed, seed.arbitrage)
 
-    assert harness.last_text.startswith("✅ Засчитано · +60 XP общий · +60 Капитал · +60 Арбитраж")
+    assert harness.last_text.startswith("✅ Засчитано · +66 XP общий · +66 Капитал · +66 Арбитраж")
     assert "💪" not in harness.last_text
 
 
@@ -401,7 +401,7 @@ async def test_check_reports_where_xp_went(
         await client.post(f"/api/tasks/{task_id}/report", data={"text": "https://example.com"})
     ).json()
 
-    assert (result["xp_delta"], result["stat"], result["skill"]) == (72, "Здоровье", "Спорт")
+    assert (result["xp_delta"], result["stat"], result["skill"]) == (79, "Здоровье", "Спорт")
     assert result["weak_mult"] == 1.2
     assert result["task"]["breakdown"]["weak_mult"] == 1.2
 
@@ -419,5 +419,6 @@ async def test_levels_api(client: httpx.AsyncClient, seed: Seed) -> None:
     assert data["steps"][9]["total"] == 9237
     assert len(data["steps"]) == 30
     assert data["rules"]["validation_mults"] == {"accepted": 1.0, "partial": 0.7, "rejected": 0.0}
-    assert (data["rules"]["honor_mode_mult"], data["rules"]["weak_stat_mult"]) == (0.8, 1.2)
+    rules = data["rules"]
+    assert (rules["no_proof_mult"], rules["proof_mult"], rules["weak_stat_mult"]) == (1.0, 1.1, 1.2)
     assert data["daily_norm_min"] == 60

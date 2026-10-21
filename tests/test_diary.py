@@ -196,8 +196,8 @@ async def test_days_show_averages_and_work(
 
     assert [e.text for e in today.entries] == ["Вечер", "Утро"]
     assert (today.mood, today.energy, today.drive) == (3.0, 3.0, 1.0)
-    # XP дня: 90 за задачу и по 10 за каждую из двух записей.
-    assert (today.focus_min, today.xp) == (90, 110)
+    # XP дня: 90 за задачу и по 15 за каждую из двух записей.
+    assert (today.focus_min, today.xp) == (90, 120)
 
 
 # Веб
@@ -480,8 +480,8 @@ async def test_every_entry_earns_xp(
         third = await diary.add_entry(session, agent, user, "Вечер", MORNING, analyze=False)
         await session.commit()
 
-    assert [first.xp, second.xp, third.xp] == [10, 10, 10]
-    assert await _xp_events(sessionmaker) == [("diary", 10)] * 3
+    assert [first.xp, second.xp, third.xp] == [15, 15, 15]
+    assert await _xp_events(sessionmaker) == [("diary", 15)] * 3
 
 
 async def test_deleted_entry_takes_xp_back(
@@ -489,13 +489,13 @@ async def test_deleted_entry_takes_xp_back(
 ) -> None:
     agent.diary.append(analysis())
     created = (await client.post("/api/diary", json={"text": "Проснулся разбитым"})).json()
-    assert created["xp"] == 10
-    assert (await client.get("/api/summary")).json()["total"]["xp"] == 10
+    assert created["xp"] == 15
+    assert (await client.get("/api/summary")).json()["total"]["xp"] == 15
 
     await client.delete(f"/api/diary/{created['entry']['id']}")
 
     # Журнал только дописывается: снятие — отдельная запись с минусом.
-    assert await _xp_events(sessionmaker) == [("diary", 10), ("diary", -10)]
+    assert await _xp_events(sessionmaker) == [("diary", 15), ("diary", -15)]
     assert (await client.get("/api/summary")).json()["total"]["xp"] == 0
     character = (await client.get("/api/character")).json()
     assert character["last_award"]["task_title"] == "Запись удалена"
@@ -509,4 +509,4 @@ async def test_bot_diary_shows_xp(
 
     await harness.send(ME, "/d нормально")
 
-    assert harness.last_text.startswith("📝 Записал в дневник · +10 XP")
+    assert harness.last_text.startswith("📝 Записал в дневник · +15 XP")

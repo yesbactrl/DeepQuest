@@ -58,7 +58,9 @@ export interface XpRules {
   cap_factor: number;
   value_mults: number[];
   validation_mults: Record<"accepted" | "partial" | "rejected", number>;
-  honor_mode_mult: number;
+  // Без пруфа и со скрином или ссылкой.
+  no_proof_mult: number;
+  proof_mult: number;
   weak_stat_mult: number;
 }
 

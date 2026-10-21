@@ -26,9 +26,12 @@ VALIDATION_MULTS = {
     ValidationVerdict.PARTIAL: 0.7,
     ValidationVerdict.REJECTED: 0.0,
 }
-HONOR_MODE_MULT = 0.8
+# Пруф — не доказательство, а данные для истории (решено 2026-10-21): без него ×1,
+# со скрином или ссылкой — небольшой бонус.
+NO_PROOF_MULT = 1.0
+PROOF_MULT = 1.1
 # За каждую запись в дневник: копим данные для будущих ретроспектив. Откалибруем позже.
-DIARY_ENTRY_XP = 10
+DIARY_ENTRY_XP = 15
 
 
 @dataclass(frozen=True)
@@ -68,7 +71,7 @@ def compute_task_xp(
 ) -> XpBreakdown:
     counted = min(actual_min, CAP_FACTOR * estimate_min)
     validation_mult = VALIDATION_MULTS[verdict]
-    proof_mult = HONOR_MODE_MULT if honor_mode else 1.0
+    proof_mult = NO_PROOF_MULT if honor_mode else PROOF_MULT
     amount = round(counted * XP_PER_MINUTE * value_mult * validation_mult * proof_mult * weak_mult)
     return XpBreakdown(
         actual_min=actual_min,

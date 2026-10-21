@@ -158,7 +158,8 @@ async def test_goal_stats_include_directions(
 
     # Таймер ещё идёт: 60 + 20 минут.
     assert income_out["stats"]["minutes"] == 80
-    assert income_out["stats"]["xp"] == 120
+    # 80 мин × 1.5 × 1.1 за пруф
+    assert income_out["stats"]["xp"] == 132
     assert income_out["stats"]["done_tasks"] == 1
     assert income_out["stats"]["idle_days"] == 0
     assert income_out["directions"][0]["stats"]["minutes"] == 80

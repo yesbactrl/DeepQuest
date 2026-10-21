@@ -93,7 +93,7 @@ function Rules({ levels }: { levels: Levels }) {
         .map((verdict) => `${VERDICT[verdict].label} ${formatMult(rules.validation_mults[verdict])}`)
         .join(" · "),
     ],
-    ["Пруф", `есть ×1 · на честном слове ${formatMult(rules.honor_mode_mult)}`],
+    ["Пруф", `нет ${formatMult(rules.no_proof_mult)} · скрин или ссылка ${formatMult(rules.proof_mult)} — бонус за данные`],
     ["Самый слабый стат", `${formatMult(rules.weak_stat_mult)} — бонус цели, которая отстаёт за сезон`],
   ];
   return (
