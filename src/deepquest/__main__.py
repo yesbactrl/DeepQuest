@@ -6,10 +6,14 @@
 
 import asyncio
 import contextlib
+import fcntl
 import logging
+import os
 import signal
 import sys
 from collections.abc import Iterator
+from pathlib import Path
+from typing import IO
 
 import uvicorn
 from aiogram import Bot, Dispatcher
@@ -119,6 +123,29 @@ async def run(settings: Settings) -> None:
         await engine.dispose()
 
 
+def acquire_instance_lock(data_dir: Path, web_url: str) -> IO[str]:
+    """Не даёт запустить второй DeepQuest на той же базе: Telegram отдаёт обновления только
+    одному процессу, а порт веба уже занят. Замок держится, пока открыт файл, и снимается
+    сам, даже если процесс упал. Возвращённый файл нужно держать открытым до выхода."""
+    lock = (data_dir / "deepquest.lock").open("a+")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        lock.seek(0)
+        pid = lock.read().strip()
+        lock.close()
+        running = f"DeepQuest уже запущен (PID {pid})" if pid else "DeepQuest уже запущен"
+        sys.exit(
+            f"{running}: бот и веб {web_url} работают в другом окне.\n"
+            "Чтобы перезапустить, останови его там (Ctrl+C) и запусти снова."
+        )
+    lock.seek(0)
+    lock.truncate()
+    lock.write(str(os.getpid()))
+    lock.flush()
+    return lock
+
+
 def main() -> None:
     try:
         settings = Settings()
@@ -132,6 +159,9 @@ def main() -> None:
         level=settings.log_level, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
     settings.data_dir.mkdir(parents=True, exist_ok=True)
+    lock = acquire_instance_lock(
+        settings.data_dir, f"http://{settings.web_host}:{settings.web_port}"
+    )
     upgrade_database(settings.database_path)
     logger.info("База: %s", settings.database_path)
     if not settings.allowed_telegram_ids:
@@ -139,7 +169,8 @@ def main() -> None:
     if settings.web_host not in {"127.0.0.1", "localhost", "::1"}:
         logger.warning("Веб слушает %s, а входа в нём нет: открыт всем в сети", settings.web_host)
 
-    asyncio.run(run(settings))
+    with lock:
+        asyncio.run(run(settings))
 
 
 if __name__ == "__main__":
