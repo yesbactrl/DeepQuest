@@ -410,7 +410,9 @@ class VoiceStatusOut(BaseModel):
 
 
 class TranscriptOut(BaseModel):
+    id: int
     text: str
+    created_at: datetime
 
 
 # Персонаж

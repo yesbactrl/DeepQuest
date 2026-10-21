@@ -18,7 +18,8 @@ import { type DiaryDay, type DiaryEntry, useAddEntry, useDiary } from "../api/di
 import { useSummary } from "../api/dashboard";
 import { useGoals } from "../api/goals";
 import { SphereChips } from "../components/diary/Spheres";
-import { VoiceButton, appendText } from "../components/VoiceButton";
+import { VoiceButton } from "../components/VoiceButton";
+import { useDraft } from "../lib/drafts";
 import { EntryCard, ScoreBadges } from "../components/diary/EntryCard";
 import { EntryEditModal } from "../components/diary/EntryEditModal";
 import { SCALES, dayLabel, formatScore } from "../lib/diary";
@@ -27,7 +28,8 @@ import { formatMinutes } from "../lib/format";
 function DiaryInput() {
   const add = useAddEntry();
   const goals = useGoals();
-  const [text, setText] = useState("");
+  // Черновик: запись переживает уход со страницы и обновление вкладки.
+  const [text, setText] = useDraft("diary");
   const [privateEntry, setPrivateEntry] = useState(false);
   // Сферы, которые отметил сам: про них агент напишет обязательно. Не отметил — разложит сам.
   const [goalIds, setGoalIds] = useState<number[]>([]);
@@ -99,7 +101,7 @@ function DiaryInput() {
             onChange={(event) => setPrivateEntry(event.currentTarget.checked)}
           />
           <Group gap="xs" wrap="nowrap">
-            <VoiceButton onText={(spoken) => setText((current) => appendText(current, spoken))} disabled={add.isPending} />
+            <VoiceButton draftKey="diary" disabled={add.isPending} />
             <Button onClick={submit} loading={add.isPending} disabled={!text.trim()}>
               Записать
             </Button>

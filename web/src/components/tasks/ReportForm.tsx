@@ -19,7 +19,8 @@ import { useEffect, useMemo, useState, type ClipboardEvent } from "react";
 import { type TaskDetail, useReport } from "../../api/tasks";
 import { formatMinutes } from "../../lib/format";
 import { VERDICT, awardMessage } from "../../lib/tasks";
-import { VoiceButton, appendText } from "../VoiceButton";
+import { useDraft } from "../../lib/drafts";
+import { VoiceButton } from "../VoiceButton";
 
 const MAX_FILES = 5;
 
@@ -53,7 +54,8 @@ function Previews({ files, onRemove }: { files: File[]; onRemove: (index: number
 // Отчёт: что сделал и пруф. Скриншот можно вставить прямо в поле через ⌘+V.
 export function ReportForm({ task }: { task: TaskDetail }) {
   const report = useReport(task.id);
-  const [text, setText] = useState("");
+  // Черновик: отчёт переживает уход со страницы и обновление вкладки.
+  const [text, setText] = useDraft(`report:${task.id}`);
   // Таймер не обязателен: без него предлагаем оценку, и её можно поправить.
   const [spent, setSpent] = useState<number | string>(task.spent_min || task.estimate_min || "");
   const [files, setFiles] = useState<File[]>([]);
@@ -76,6 +78,8 @@ export function ReportForm({ task }: { task: TaskDetail }) {
       { text, files, spentMin: typeof spent === "number" && spent >= 1 ? spent : null, selfCheck },
       {
         onSuccess: (result) => {
+          // Отчёт сохранён на сервере (даже если агент недоступен) — черновик больше не нужен.
+          setText("");
           if (result.agent_failed) return;
           const verdict = result.task.validation?.verdict;
           notifications.show({
@@ -135,7 +139,7 @@ export function ReportForm({ task }: { task: TaskDetail }) {
             )}
           </FileButton>
           <VoiceButton
-            onText={(spoken) => setText((current) => appendText(current, spoken))}
+            draftKey={`report:${task.id}`}
             disabled={report.isPending}
           />
         </Group>

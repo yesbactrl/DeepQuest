@@ -13,6 +13,11 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from deepquest.db.models import User, VoiceTranscript
+
 if TYPE_CHECKING:
     from faster_whisper import WhisperModel
 
@@ -21,6 +26,8 @@ logger = logging.getLogger(__name__)
 # Дольше — это уже не «надиктовать задачу», а распознавание на минуты.
 MAX_VOICE_SECONDS = 5 * 60
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
+# Сколько последних расшифровок держим для «Последних диктовок».
+HISTORY_SIZE = 5
 
 # Whisper учился на субтитрах и на тишине в конце иногда «дописывает» их титры.
 _PHANTOM_TAIL = re.compile(
@@ -134,3 +141,33 @@ class WhisperTranscriber:
         if info.duration > MAX_VOICE_SECONDS:
             raise VoiceError(f"Запись длиннее {MAX_VOICE_SECONDS // 60} минут.")
         return clean_transcript([segment.text for segment in segments])
+
+
+async def remember(session: AsyncSession, user: User, text: str) -> VoiceTranscript:
+    """Сохранить расшифровку в историю и оставить только HISTORY_SIZE последних."""
+    transcript = VoiceTranscript(user_id=user.id, text=text)
+    session.add(transcript)
+    await session.flush()
+    keep = (
+        select(VoiceTranscript.id)
+        .where(VoiceTranscript.user_id == user.id)
+        .order_by(VoiceTranscript.id.desc())
+        .limit(HISTORY_SIZE)
+    )
+    await session.execute(
+        delete(VoiceTranscript).where(
+            VoiceTranscript.user_id == user.id, VoiceTranscript.id.not_in(keep)
+        )
+    )
+    return transcript
+
+
+async def history(session: AsyncSession, user: User) -> list[VoiceTranscript]:
+    return list(
+        await session.scalars(
+            select(VoiceTranscript)
+            .where(VoiceTranscript.user_id == user.id)
+            .order_by(VoiceTranscript.id.desc())
+            .limit(HISTORY_SIZE)
+        )
+    )

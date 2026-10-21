@@ -215,8 +215,21 @@ async def test_web_transcribes(client: httpx.AsyncClient, transcriber: FakeTrans
     response = await client.post("/api/voice", files=_audio())
 
     assert response.status_code == 200
-    assert response.json() == {"text": SPOKEN}
+    assert response.json()["text"] == SPOKEN
     assert transcriber.received == [b"webm audio"]
+
+
+async def test_web_keeps_last_five_transcripts(
+    client: httpx.AsyncClient, transcriber: FakeTranscriber
+) -> None:
+    transcriber.results.extend(f"Диктовка {n}" for n in range(1, 8))
+    for _ in range(7):
+        assert (await client.post("/api/voice", files=_audio())).status_code == 200
+
+    history = (await client.get("/api/voice/history")).json()
+
+    # Свежие сверху, хранятся только пять последних.
+    assert [item["text"] for item in history] == [f"Диктовка {n}" for n in range(7, 2, -1)]
 
 
 @pytest.mark.parametrize(

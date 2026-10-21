@@ -1,15 +1,17 @@
 import { Button, Group, Paper, Stack, Text, Textarea } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconSparkles } from "@tabler/icons-react";
-import { useState, type KeyboardEvent } from "react";
+import type { KeyboardEvent } from "react";
 
 import { type PlanOutcome, usePlan } from "../../api/tasks";
+import { useDraft } from "../../lib/drafts";
 import { plural } from "../../lib/format";
-import { VoiceButton, appendText } from "../VoiceButton";
+import { VoiceButton } from "../VoiceButton";
 
 // Поле «что сделать?»: агент превращает мысль в черновики задач или задаёт вопрос.
 export function PlanBox({ onPlanned }: { onPlanned: (outcome: PlanOutcome) => void }) {
-  const [text, setText] = useState("");
+  // Черновик: мысль переживает уход со страницы и обновление вкладки.
+  const [text, setText] = useDraft("plan");
   const plan = usePlan();
 
   function submit() {
@@ -65,7 +67,7 @@ export function PlanBox({ onPlanned }: { onPlanned: (outcome: PlanOutcome) => vo
           </Text>
           <Group gap="xs" wrap="nowrap">
             <VoiceButton
-              onText={(spoken) => setText((current) => appendText(current, spoken))}
+              draftKey="plan"
               disabled={plan.isPending}
             />
             <Button

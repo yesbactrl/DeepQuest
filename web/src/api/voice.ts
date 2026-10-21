@@ -1,5 +1,7 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 
+import { onTranscribed } from "../lib/voiceJobs";
 import { api } from "./client";
 
 export function useVoiceStatus() {
@@ -12,19 +14,22 @@ export function useVoiceStatus() {
   });
 }
 
-// Chrome пишет webm, Safari — mp4: сервер разберёт оба, расширение — для логов и отладки.
-function extension(type: string): string {
-  if (type.includes("ogg")) return "ogg";
-  if (type.includes("mp4") || type.includes("aac")) return "m4a";
-  return "webm";
+export interface Transcript {
+  id: number;
+  text: string;
+  created_at: string;
 }
 
-export function useTranscribe() {
-  return useMutation({
-    mutationFn: async (audio: Blob) => {
-      const form = new FormData();
-      form.append("audio", audio, `voice.${extension(audio.type)}`);
-      return (await api.upload<{ text: string }>("/voice", form)).text;
-    },
+// Последние диктовки: страховка, если расшифровка не дошла до поля.
+export function useVoiceHistory(enabled: boolean) {
+  const client = useQueryClient();
+  useEffect(
+    () => onTranscribed(() => void client.invalidateQueries({ queryKey: ["voice-history"] })),
+    [client],
+  );
+  return useQuery({
+    queryKey: ["voice-history"],
+    queryFn: () => api.get<Transcript[]>("/voice/history"),
+    enabled,
   });
 }

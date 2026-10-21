@@ -1,10 +1,12 @@
-import { ActionIcon, Group, Text, Tooltip } from "@mantine/core";
+import { ActionIcon, Group, Menu, Text, Tooltip } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconMicrophone, IconPlayerStopFilled } from "@tabler/icons-react";
+import { IconHistory, IconMicrophone, IconPlayerStopFilled } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 
-import { useTranscribe, useVoiceStatus } from "../api/voice";
-import { formatClock, useNow } from "../lib/time";
+import { useVoiceHistory, useVoiceStatus } from "../api/voice";
+import { appendDraft } from "../lib/drafts";
+import { formatClock, formatTime, useNow } from "../lib/time";
+import { transcribeInto, useTranscribing } from "../lib/voiceJobs";
 
 // Дольше сервер распознавать не станет: на это ушли бы минуты.
 const MAX_SECONDS = 5 * 60;
@@ -12,43 +14,58 @@ const MAX_SECONDS = 5 * 60;
 const SUPPORTED =
   typeof window !== "undefined" && "MediaRecorder" in window && !!navigator.mediaDevices?.getUserMedia;
 
-// Расшифровка дописывается к тому, что уже набрано в поле.
-export function appendText(current: string, addition: string): string {
-  const base = current.trimEnd();
-  return base ? `${base} ${addition}` : addition;
+// «Последние диктовки»: вставить любую из недавних расшифровок в это поле.
+function VoiceHistory({ draftKey, size }: { draftKey: string; size: number }) {
+  const [opened, setOpened] = useState(false);
+  const history = useVoiceHistory(opened);
+  return (
+    <Menu opened={opened} onChange={setOpened} position="bottom-end" withinPortal width={320}>
+      <Menu.Target>
+        <Tooltip label="Последние диктовки" disabled={opened}>
+          <ActionIcon size={size} variant="subtle" color="gray" aria-label="Последние диктовки">
+            <IconHistory size={16} />
+          </ActionIcon>
+        </Tooltip>
+      </Menu.Target>
+      <Menu.Dropdown>
+        <Menu.Label>Последние диктовки — вставить в поле</Menu.Label>
+        {history.isPending && <Menu.Item disabled>Загружаю…</Menu.Item>}
+        {history.data?.length === 0 && <Menu.Item disabled>Пока пусто</Menu.Item>}
+        {history.data?.map((item) => (
+          <Menu.Item key={item.id} onClick={() => appendDraft(draftKey, item.text)}>
+            <Text size="xs" c="dimmed">
+              {formatTime(item.created_at)}
+            </Text>
+            <Text size="sm" lineClamp={2}>
+              {item.text}
+            </Text>
+          </Menu.Item>
+        ))}
+      </Menu.Dropdown>
+    </Menu>
+  );
 }
 
-// Кнопка микрофона у поля ввода: запись → распознавание на сервере → текст в поле.
-// Сама ничего не отправляет: расшифровку можно поправить перед отправкой.
+// Кнопка микрофона у поля ввода: запись → распознавание на сервере → текст в черновик поля
+// (`draftKey`). Сама ничего не отправляет: расшифровку можно поправить перед отправкой.
+// Уход со страницы запись не теряет: она останавливается и всё равно распознаётся.
 export function VoiceButton({
-  onText,
+  draftKey,
   disabled,
   size = 36,
 }: {
-  onText: (text: string) => void;
+  draftKey: string;
   disabled?: boolean;
   size?: number;
 }) {
   const status = useVoiceStatus();
-  const transcribe = useTranscribe();
+  const transcribing = useTranscribing(draftKey);
   const recorder = useRef<MediaRecorder | null>(null);
-  // Поле закрыли посреди записи — расшифровка уже никому не нужна.
-  const discard = useRef(false);
-  const onTextRef = useRef(onText);
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const now = useNow(startedAt !== null);
 
-  useEffect(() => {
-    onTextRef.current = onText;
-  }, [onText]);
-
-  useEffect(() => {
-    discard.current = false;
-    return () => {
-      discard.current = true;
-      recorder.current?.stop();
-    };
-  }, []);
+  // Ушли со страницы посреди записи — останавливаем, и запись уходит на распознавание.
+  useEffect(() => () => recorder.current?.stop(), []);
 
   useEffect(() => {
     if (startedAt === null) return;
@@ -80,11 +97,7 @@ export function VoiceButton({
       recorder.current = null;
       setStartedAt(null);
       const audio = new Blob(chunks, { type: rec.mimeType });
-      if (discard.current || audio.size === 0) return;
-      transcribe.mutate(audio, {
-        onSuccess: (text) => onTextRef.current(text),
-        onError: (error) => notifications.show({ color: "red", message: error.message }),
-      });
+      if (audio.size > 0) void transcribeInto(draftKey, audio);
     };
     rec.start();
     recorder.current = rec;
@@ -113,17 +126,20 @@ export function VoiceButton({
   }
 
   return (
-    <Tooltip label={transcribe.isPending ? "Распознаю…" : "Надиктовать"}>
-      <ActionIcon
-        size={size}
-        variant="default"
-        aria-label="Надиктовать голосом"
-        loading={transcribe.isPending}
-        disabled={disabled}
-        onClick={start}
-      >
-        <IconMicrophone size={18} />
-      </ActionIcon>
-    </Tooltip>
+    <Group gap={2} wrap="nowrap">
+      <Tooltip label={transcribing ? "Распознаю — можно уйти со страницы, текст не пропадёт" : "Надиктовать"}>
+        <ActionIcon
+          size={size}
+          variant="default"
+          aria-label="Надиктовать голосом"
+          loading={transcribing}
+          disabled={disabled}
+          onClick={start}
+        >
+          <IconMicrophone size={18} />
+        </ActionIcon>
+      </Tooltip>
+      <VoiceHistory draftKey={draftKey} size={size} />
+    </Group>
   );
 }

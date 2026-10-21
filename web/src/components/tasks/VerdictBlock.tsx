@@ -19,7 +19,8 @@ import { useState, type ReactNode } from "react";
 import { type TaskDetail, useChangeTime, useDispute } from "../../api/tasks";
 import { formatMinutes } from "../../lib/format";
 import { VERDICT, formatMult, xpSplit } from "../../lib/tasks";
-import { VoiceButton, appendText } from "../VoiceButton";
+import { useDraft } from "../../lib/drafts";
+import { VoiceButton } from "../VoiceButton";
 
 // Сколько ушло на задачу: можно поправить, XP пересчитается тем же вердиктом.
 function TimeValue({ task, text }: { task: TaskDetail; text: string }) {
@@ -156,7 +157,8 @@ function ReportView({ task }: { task: TaskDetail }) {
 
 function DisputeForm({ task }: { task: TaskDetail }) {
   const dispute = useDispute(task.id);
-  const [argument, setArgument] = useState("");
+  // Черновик: аргумент переживает уход со страницы и обновление вкладки.
+  const [argument, setArgument] = useDraft(`dispute:${task.id}`);
   return (
     <Stack gap="xs">
       <Textarea
@@ -174,7 +176,7 @@ function DisputeForm({ task }: { task: TaskDetail }) {
       )}
       <Group gap="xs" wrap="nowrap">
         <VoiceButton
-          onText={(spoken) => setArgument((current) => appendText(current, spoken))}
+          draftKey={`dispute:${task.id}`}
           disabled={dispute.isPending}
         />
         <Button
@@ -185,12 +187,14 @@ function DisputeForm({ task }: { task: TaskDetail }) {
           disabled={!argument.trim()}
           onClick={() =>
             dispute.mutate(argument, {
-              onSuccess: (result) =>
+              onSuccess: (result) => {
+                setArgument("");
                 notifications.show({
                   color: "orange",
                   title: "Пересмотрено",
                   message: `${VERDICT[result.task.validation!.verdict].title} · ${xpSplit(result.xp_delta, result.stat, result.skill)}`,
-                }),
+                });
+              },
             })
           }
         >

@@ -43,7 +43,8 @@ import { ACTIVE_STATUSES, scheduleOptions } from "../../lib/plan";
 import { STATUS, formatMult, taskXp } from "../../lib/tasks";
 import { formatClock, formatTime, useNow } from "../../lib/time";
 import { StatItem } from "../StatItem";
-import { VoiceButton, appendText } from "../VoiceButton";
+import { useDraft } from "../../lib/drafts";
+import { VoiceButton } from "../VoiceButton";
 import { ReportForm } from "./ReportForm";
 import { TaskEditForm } from "./TaskEditForm";
 import { VerdictBlock } from "./VerdictBlock";
@@ -118,7 +119,7 @@ function Summary({ task }: { task: TaskDetail }) {
 
 function ReviseBox({ task }: { task: TaskDetail }) {
   const revise = useRevise(task.id);
-  const [correction, setCorrection] = useState("");
+  const [correction, setCorrection] = useDraft(`revise:${task.id}`);
   const run = (text: string | null) =>
     revise.mutate(text, {
       onSuccess: (result) => {
@@ -144,7 +145,7 @@ function ReviseBox({ task }: { task: TaskDetail }) {
       <Group gap="xs">
         <VoiceButton
           size={30}
-          onText={(spoken) => setCorrection((current) => appendText(current, spoken))}
+          draftKey={`revise:${task.id}`}
           disabled={revise.isPending}
         />
         <Button
@@ -174,7 +175,7 @@ function ReviseBox({ task }: { task: TaskDetail }) {
 
 function ClarifyBox({ task, onPlanned }: { task: TaskDetail; onPlanned: (o: PlanOutcome) => void }) {
   const clarify = useClarify(task.id);
-  const [answer, setAnswer] = useState("");
+  const [answer, setAnswer] = useDraft(`clarify:${task.id}`);
   return (
     <Stack gap="sm">
       <Alert color="yellow" title="Агент спрашивает">
@@ -189,13 +190,21 @@ function ClarifyBox({ task, onPlanned }: { task: TaskDetail; onPlanned: (o: Plan
       />
       <Group justify="flex-end" gap="xs">
         <VoiceButton
-          onText={(spoken) => setAnswer((current) => appendText(current, spoken))}
+          draftKey={`clarify:${task.id}`}
           disabled={clarify.isPending}
         />
         <Button
           loading={clarify.isPending}
           disabled={!answer.trim()}
-          onClick={() => clarify.mutate(answer, { onSuccess: onPlanned, onError: showError })}
+          onClick={() =>
+            clarify.mutate(answer, {
+              onSuccess: (outcome) => {
+                setAnswer("");
+                onPlanned(outcome);
+              },
+              onError: showError,
+            })
+          }
         >
           Ответить
         </Button>
