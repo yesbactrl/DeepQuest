@@ -196,7 +196,8 @@ async def test_days_show_averages_and_work(
 
     assert [e.text for e in today.entries] == ["Вечер", "Утро"]
     assert (today.mood, today.energy, today.drive) == (3.0, 3.0, 1.0)
-    assert (today.focus_min, today.xp) == (90, 90)
+    # XP дня: 90 за задачу и по 10 за каждую из двух записей.
+    assert (today.focus_min, today.xp) == (90, 110)
 
 
 # Веб
@@ -455,3 +456,57 @@ async def test_bot_diary_shows_spheres(
     await harness.send(ME, "/d по деньгам тревожно")
 
     assert "🎯 <b>Капитал</b> 2/5 — 👍 отложил 100$ · 👎 аренда" in harness.last_text
+
+
+# XP за записи
+
+
+async def _xp_events(sessionmaker: async_sessionmaker[AsyncSession]) -> list[tuple[str, int]]:
+    async with sessionmaker() as session:
+        events = await session.scalars(select(XpEvent).order_by(XpEvent.id))
+        return [(event.kind.value, event.amount) for event in events]
+
+
+async def test_every_entry_earns_xp(
+    sessionmaker: async_sessionmaker[AsyncSession], user_id: int
+) -> None:
+    agent = FakeAgent()
+    agent.diary += [analysis(), agent_down()]
+    async with sessionmaker() as session:
+        user = await _user(session, user_id)
+        first = await diary.add_entry(session, agent, user, "Утро", MORNING)
+        # Даже если агент недоступен или запись только для себя — факт записи засчитан.
+        second = await diary.add_entry(session, agent, user, "День", MORNING)
+        third = await diary.add_entry(session, agent, user, "Вечер", MORNING, analyze=False)
+        await session.commit()
+
+    assert [first.xp, second.xp, third.xp] == [10, 10, 10]
+    assert await _xp_events(sessionmaker) == [("diary", 10)] * 3
+
+
+async def test_deleted_entry_takes_xp_back(
+    client: httpx.AsyncClient, agent: FakeAgent, sessionmaker: async_sessionmaker[AsyncSession]
+) -> None:
+    agent.diary.append(analysis())
+    created = (await client.post("/api/diary", json={"text": "Проснулся разбитым"})).json()
+    assert created["xp"] == 10
+    assert (await client.get("/api/summary")).json()["total"]["xp"] == 10
+
+    await client.delete(f"/api/diary/{created['entry']['id']}")
+
+    # Журнал только дописывается: снятие — отдельная запись с минусом.
+    assert await _xp_events(sessionmaker) == [("diary", 10), ("diary", -10)]
+    assert (await client.get("/api/summary")).json()["total"]["xp"] == 0
+    character = (await client.get("/api/character")).json()
+    assert character["last_award"]["task_title"] == "Запись удалена"
+
+
+async def test_bot_diary_shows_xp(
+    sessionmaker: async_sessionmaker[AsyncSession], user_id: int
+) -> None:
+    harness = BotHarness(sessionmaker, allowed_ids=[ME])
+    harness.agent.diary.append(analysis())
+
+    await harness.send(ME, "/d нормально")
+
+    assert harness.last_text.startswith("📝 Записал в дневник · +10 XP")

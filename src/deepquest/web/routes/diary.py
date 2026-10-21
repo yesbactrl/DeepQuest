@@ -38,7 +38,7 @@ async def _entry(session: AsyncSession, user: User, entry_id: int) -> DiaryEntry
 
 def _result(outcome: EntryOutcome) -> DiaryEntryResult:
     return DiaryEntryResult(
-        entry=DiaryEntryOut.of(outcome.entry), agent_failed=outcome.agent_failed
+        entry=DiaryEntryOut.of(outcome.entry), agent_failed=outcome.agent_failed, xp=outcome.xp
     )
 
 
@@ -98,5 +98,5 @@ async def analyze_entry(
 
 @router.delete("/{entry_id}", status_code=204)
 async def delete_entry(entry_id: int, session: SessionDep, user: UserDep) -> Response:
-    await diary.delete_entry(session, await _entry(session, user, entry_id))
+    await diary.delete_entry(session, user, await _entry(session, user, entry_id), _now())
     return Response(status_code=204)

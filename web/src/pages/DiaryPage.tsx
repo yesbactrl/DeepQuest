@@ -44,7 +44,7 @@ function DiaryInput() {
           if (result.agent_failed) {
             notifications.show({
               color: "yellow",
-              message: "Записал. Агент сейчас недоступен — разбери запись позже.",
+              message: `Записал · +${result.xp} XP. Агент сейчас недоступен — разбери запись позже.`,
             });
             return;
           }
@@ -52,7 +52,11 @@ function DiaryInput() {
           const scores = SCALES.filter((s) => entry[s.key] !== null)
             .map((s) => `${s.icon} ${formatScore(entry[s.key]!)}`)
             .join("  ");
-          notifications.show({ color: "teal", title: "Записал", message: scores || entry.summary || "" });
+          notifications.show({
+            color: "teal",
+            title: `Записал · +${result.xp} XP`,
+            message: scores || entry.summary || "",
+          });
         },
         onError: (error) => notifications.show({ color: "red", message: error.message }),
       },

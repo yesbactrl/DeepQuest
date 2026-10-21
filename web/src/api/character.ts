@@ -24,7 +24,7 @@ export interface Stat {
 }
 
 export interface Award {
-  kind: "task" | "correction";
+  kind: "task" | "correction" | "diary";
   amount: number;
   task_title: string | null;
   stat: string | null;

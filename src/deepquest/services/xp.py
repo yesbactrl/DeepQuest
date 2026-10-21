@@ -9,7 +9,7 @@ weak_mult — ×1.2, если цель задачи сейчас самый сл
 """
 
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import func, select
@@ -27,6 +27,8 @@ VALIDATION_MULTS = {
     ValidationVerdict.REJECTED: 0.0,
 }
 HONOR_MODE_MULT = 0.8
+# За каждую запись в дневник: копим данные для будущих ретроспектив. Откалибруем позже.
+DIARY_ENTRY_XP = 10
 
 
 @dataclass(frozen=True)
@@ -136,5 +138,31 @@ async def season_xp(session: AsyncSession, user: User, season: str) -> int:
         select(func.coalesce(func.sum(XpEvent.amount), 0)).where(
             XpEvent.user_id == user.id, XpEvent.season == season
         )
+    )
+    return total or 0
+
+
+async def record_diary_xp(
+    session: AsyncSession, user: User, entry_id: int, day: date, amount: int = DIARY_ENTRY_XP
+) -> XpEvent:
+    """Начисление за запись в дневник (или минус при её удалении). В цель не идёт:
+    дневник качает общий уровень, а не стат."""
+    event = XpEvent(
+        user_id=user.id,
+        diary_entry_id=entry_id,
+        kind=XpKind.DIARY,
+        amount=amount,
+        breakdown={"diary_entry_id": entry_id},
+        logical_date=day,
+        season=season_of(day),
+    )
+    session.add(event)
+    await session.flush()
+    return event
+
+
+async def diary_entry_xp(session: AsyncSession, entry_id: int) -> int:
+    total = await session.scalar(
+        select(func.coalesce(func.sum(XpEvent.amount), 0)).where(XpEvent.diary_entry_id == entry_id)
     )
     return total or 0

@@ -31,7 +31,9 @@ async def _save(
         bot,
         message.chat.id,
         placeholder.message_id,
-        texts.diary_entry(outcome.entry, agent_failed=outcome.agent_failed, goal_titles=titles),
+        texts.diary_entry(
+            outcome.entry, agent_failed=outcome.agent_failed, goal_titles=titles, xp=outcome.xp
+        ),
     )
 
 

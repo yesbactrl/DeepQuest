@@ -620,6 +620,8 @@ class DiaryEditIn(BaseModel):
 class DiaryEntryResult(BaseModel):
     entry: DiaryEntryOut
     agent_failed: bool
+    # XP за саму запись; 0 — при повторном разборе.
+    xp: int = 0
 
 
 # План

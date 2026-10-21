@@ -129,6 +129,9 @@ async def _last_award(session: AsyncSession, user: User) -> Award | None:
     if event is None:
         return None
     task = await session.get(Task, event.task_id) if event.task_id is not None else None
+    title = task.title if task is not None else None
+    if event.kind == XpKind.DIARY:
+        title = "Запись в дневник" if event.amount > 0 else "Запись удалена"
     goal = (
         await session.scalar(
             select(Goal).where(Goal.id == event.goal_id).options(selectinload(Goal.parent))
@@ -140,7 +143,7 @@ async def _last_award(session: AsyncSession, user: User) -> Award | None:
     return Award(
         kind=event.kind,
         amount=event.amount,
-        task_title=task.title if task is not None else None,
+        task_title=title,
         stat=stat.title if stat is not None else None,
         skill=goal.title if goal is not None and goal.parent is not None else None,
         created_at=event.created_at,

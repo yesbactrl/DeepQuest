@@ -49,6 +49,8 @@ export interface Diary {
 export interface EntryResult {
   entry: DiaryEntry;
   agent_failed: boolean;
+  // XP за саму запись.
+  xp: number;
 }
 
 export interface DiaryEdit {
@@ -77,7 +79,13 @@ function useDiaryMutation<I, O>(mutationFn: (input: I) => Promise<O>) {
   const client = useQueryClient();
   return useMutation({
     mutationFn,
-    onSuccess: () => client.invalidateQueries({ queryKey: DIARY_KEY }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: DIARY_KEY });
+      // Запись приносит XP: уровни, персонаж и графики меняются.
+      void client.invalidateQueries({ queryKey: ["summary"] });
+      void client.invalidateQueries({ queryKey: ["character"] });
+      void client.invalidateQueries({ queryKey: ["chart"] });
+    },
   });
 }
 

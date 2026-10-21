@@ -590,14 +590,19 @@ def _sphere_line(sphere: DiarySphere, title: str) -> str:
 
 
 def diary_entry(
-    entry: DiaryEntry, *, agent_failed: bool, goal_titles: dict[int, str] | None = None
+    entry: DiaryEntry,
+    *,
+    agent_failed: bool,
+    goal_titles: dict[int, str] | None = None,
+    xp: int = 0,
 ) -> str:
+    award = f" · +{xp} XP" if xp else ""
     if agent_failed:
         return (
-            "📝 Записал в дневник.\n\nАгент сейчас недоступен, поэтому без оценок: "
+            f"📝 Записал в дневник{award}.\n\nАгент сейчас недоступен, поэтому без оценок: "
             "разобрать запись можно позже в вебе, в «Дневнике»."
         )
-    lines = ["📝 Записал в дневник"]
+    lines = [f"📝 Записал в дневник{award}"]
     if entry.summary:
         lines += ["", f"<b>{escape(entry.summary)}</b>"]
     scores = [

@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from deepquest.agent.base import AgentError, TaskAgent
 from deepquest.agent.schemas import DiaryAnalysis, DiaryContext, DiarySphereNote, GoalContext
 from deepquest.db.models import DiaryEntry, DiarySphere, DiaryStatus, User, XpEvent
+from deepquest.services import xp
 from deepquest.services.agent_log import record_calls
 from deepquest.services.days import local_time, user_logical_date
 from deepquest.services.planning import goal_context
@@ -189,6 +190,8 @@ async def _analyze(session: AsyncSession, agent: TaskAgent, user: User, entry: D
 class EntryOutcome:
     entry: DiaryEntry
     agent_failed: bool = False
+    # Сколько XP принесла запись (начисляется сразу, даже если агент недоступен).
+    xp: int = 0
 
 
 async def add_entry(
@@ -221,10 +224,11 @@ async def add_entry(
         _set_spheres(entry, [], _roots(await goal_context(session, user)), goal_ids)
     session.add(entry)
     await session.flush()
+    award = await xp.record_diary_xp(session, user, entry.id, entry.logical_date)
     if not analyze:
-        return EntryOutcome(entry)
+        return EntryOutcome(entry, xp=award.amount)
     ok = await _analyze(session, agent, user, entry)
-    return EntryOutcome(entry, agent_failed=not ok)
+    return EntryOutcome(entry, agent_failed=not ok, xp=award.amount)
 
 
 async def reanalyze(
@@ -278,7 +282,13 @@ async def edit_entry(session: AsyncSession, user: User, entry: DiaryEntry, edit:
         entry.edited = True
 
 
-async def delete_entry(session: AsyncSession, entry: DiaryEntry) -> None:
+async def delete_entry(session: AsyncSession, user: User, entry: DiaryEntry, now: datetime) -> None:
+    """Удалить запись. Журнал XP только дописывается: начисленное за неё снимается минусом."""
+    earned = await xp.diary_entry_xp(session, entry.id)
+    if earned:
+        await xp.record_diary_xp(
+            session, user, entry.id, user_logical_date(user, now), amount=-earned
+        )
     await session.execute(delete(DiaryEntry).where(DiaryEntry.id == entry.id))
 
 

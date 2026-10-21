@@ -244,6 +244,7 @@ class Validation(Base):
 class XpKind(StrEnum):
     TASK = "task"
     CORRECTION = "correction"  # пересчёт после оспаривания: разница к прошлому начислению
+    DIARY = "diary"  # запись в дневник; при удалении записи — такая же запись с минусом
 
 
 class XpEvent(Base):
@@ -257,6 +258,9 @@ class XpEvent(Base):
         ForeignKey("tasks.id", ondelete="SET NULL"), index=True
     )
     goal_id: Mapped[int | None] = mapped_column(ForeignKey("goals.id", ondelete="SET NULL"))
+    diary_entry_id: Mapped[int | None] = mapped_column(
+        ForeignKey("diary_entries.id", ondelete="SET NULL"), index=True
+    )
     kind: Mapped[XpKind] = mapped_column(_str_enum(XpKind))
     amount: Mapped[int]
     breakdown: Mapped[dict[str, Any]] = mapped_column(JSON)
