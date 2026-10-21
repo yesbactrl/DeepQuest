@@ -446,6 +446,29 @@ class AwardOut(BaseModel):
         )
 
 
+class LevelStepOut(BaseModel):
+    level: int
+    cost: int
+    total: int
+
+
+class XpRulesOut(BaseModel):
+    """Из чего складывается XP за задачу — те же числа, что в services/xp.py."""
+
+    xp_per_minute: int
+    cap_factor: int
+    value_mults: list[float]
+    validation_mults: dict[str, float]
+    honor_mode_mult: float
+    weak_stat_mult: float
+
+
+class LevelsOut(BaseModel):
+    steps: list[LevelStepOut]
+    rules: XpRulesOut
+    daily_norm_min: int
+
+
 class CharacterOut(BaseModel):
     summary: SummaryOut
     stats: list[StatOut]

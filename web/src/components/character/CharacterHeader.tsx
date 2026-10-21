@@ -1,5 +1,6 @@
-import { Alert, Card, Group, Progress, Stack, Text, Title } from "@mantine/core";
+import { Alert, Anchor, Card, Group, Progress, Stack, Text, Title } from "@mantine/core";
 import { IconCheck, IconScale } from "@tabler/icons-react";
+import { Link } from "react-router";
 
 import type { Award, Character } from "../../api/character";
 import { plural } from "../../lib/format";
@@ -49,7 +50,12 @@ export function CharacterHeader({ character }: { character: Character }) {
             <Text size="sm" c="dimmed">
               Персонаж · сезон {month}
             </Text>
-            <Title order={2}>Уровень {total.level}</Title>
+            <Group gap="sm" align="baseline">
+              <Title order={2}>Уровень {total.level}</Title>
+              <Anchor component={Link} to="/levels" size="sm">
+                Шкала уровней →
+              </Anchor>
+            </Group>
           </Stack>
           <Stack gap={0} align="flex-end">
             <Text size="sm" c="dimmed">

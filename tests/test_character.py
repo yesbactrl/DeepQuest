@@ -404,3 +404,20 @@ async def test_check_reports_where_xp_went(
     assert (result["xp_delta"], result["stat"], result["skill"]) == (72, "Здоровье", "Спорт")
     assert result["weak_mult"] == 1.2
     assert result["task"]["breakdown"]["weak_mult"] == 1.2
+
+
+async def test_levels_api(client: httpx.AsyncClient, seed: Seed) -> None:
+    data = (await client.get("/api/levels")).json()
+
+    assert data["steps"][:5] == [
+        {"level": 1, "cost": 0, "total": 0},
+        {"level": 2, "cost": 100, "total": 100},
+        {"level": 3, "cost": 264, "total": 364},
+        {"level": 4, "cost": 466, "total": 830},
+        {"level": 5, "cost": 696, "total": 1526},
+    ]
+    assert data["steps"][9]["total"] == 9237
+    assert len(data["steps"]) == 30
+    assert data["rules"]["validation_mults"] == {"accepted": 1.0, "partial": 0.7, "rejected": 0.0}
+    assert (data["rules"]["honor_mode_mult"], data["rules"]["weak_stat_mult"]) == (0.8, 1.2)
+    assert data["daily_norm_min"] == 60

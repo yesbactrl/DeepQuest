@@ -29,6 +29,24 @@ def xp_to_next(level: int) -> int:
     return round(BASE_XP * level**GROWTH)
 
 
+@dataclass(frozen=True)
+class Step:
+    level: int
+    # Сколько XP стоит взять этот уровень с предыдущего и сколько нужно всего с нуля.
+    cost: int
+    total: int
+
+
+def scale(max_level: int) -> list[Step]:
+    """Шкала уровней с 1-го по `max_level`: для экрана «Уровни» и проверки баланса."""
+    steps, total = [Step(level=1, cost=0, total=0)], 0
+    for level in range(2, max_level + 1):
+        cost = xp_to_next(level - 1)
+        total += cost
+        steps.append(Step(level=level, cost=cost, total=total))
+    return steps
+
+
 def level_of(xp: int) -> Level:
     xp = max(xp, 0)
     level, floor = 1, 0

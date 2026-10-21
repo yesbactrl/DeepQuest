@@ -4,9 +4,15 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter
 
+from deepquest.agent.schemas import VALUE_MULTIPLIERS
+from deepquest.services import xp
 from deepquest.services.character import WEAK_STAT_MULT, build_character
+from deepquest.services.levels import scale
 from deepquest.web.deps import SessionDep, UserDep
-from deepquest.web.schemas import CharacterOut
+from deepquest.web.schemas import CharacterOut, LevelsOut, LevelStepOut, XpRulesOut
+
+# Сколько уровней показывать на шкале: дальше — годы работы.
+SCALE_LEVELS = 30
 
 router = APIRouter(prefix="/api", tags=["character"])
 
@@ -14,3 +20,21 @@ router = APIRouter(prefix="/api", tags=["character"])
 @router.get("/character")
 async def character(session: SessionDep, user: UserDep) -> CharacterOut:
     return CharacterOut.of(await build_character(session, user, datetime.now(UTC)), WEAK_STAT_MULT)
+
+
+@router.get("/levels")
+async def levels(user: UserDep) -> LevelsOut:
+    return LevelsOut(
+        steps=[
+            LevelStepOut(level=s.level, cost=s.cost, total=s.total) for s in scale(SCALE_LEVELS)
+        ],
+        rules=XpRulesOut(
+            xp_per_minute=xp.XP_PER_MINUTE,
+            cap_factor=xp.CAP_FACTOR,
+            value_mults=list(VALUE_MULTIPLIERS),
+            validation_mults={verdict.value: mult for verdict, mult in xp.VALIDATION_MULTS.items()},
+            honor_mode_mult=xp.HONOR_MODE_MULT,
+            weak_stat_mult=WEAK_STAT_MULT,
+        ),
+        daily_norm_min=user.daily_norm_min,
+    )

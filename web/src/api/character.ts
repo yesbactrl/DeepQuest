@@ -45,3 +45,34 @@ export function useCharacter() {
     queryFn: () => api.get<Character>("/character"),
   });
 }
+
+export interface LevelStep {
+  level: number;
+  // Сколько XP стоит взять уровень с предыдущего и сколько нужно всего с нуля.
+  cost: number;
+  total: number;
+}
+
+export interface XpRules {
+  xp_per_minute: number;
+  cap_factor: number;
+  value_mults: number[];
+  validation_mults: Record<"accepted" | "partial" | "rejected", number>;
+  honor_mode_mult: number;
+  weak_stat_mult: number;
+}
+
+export interface Levels {
+  steps: LevelStep[];
+  rules: XpRules;
+  daily_norm_min: number;
+}
+
+export function useLevels() {
+  return useQuery({
+    queryKey: ["levels"],
+    queryFn: () => api.get<Levels>("/levels"),
+    // Шкала меняется только вместе с кодом.
+    staleTime: Infinity,
+  });
+}
