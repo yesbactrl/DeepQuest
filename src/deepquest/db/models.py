@@ -356,7 +356,7 @@ class DiarySphere(Base):
         ForeignKey("diary_entries.id", ondelete="CASCADE"), index=True
     )
     goal_id: Mapped[int] = mapped_column(ForeignKey("goals.id", ondelete="CASCADE"), index=True)
-    # Как в этой сфере сейчас, 1–5; пусто — из записи не понять.
+    # Как в этой сфере сейчас, 1–10; пусто — из записи не понять.
     score: Mapped[int | None]
     good: Mapped[str | None] = mapped_column(Text)  # что радует
     bad: Mapped[str | None] = mapped_column(Text)  # что огорчает

@@ -8,6 +8,7 @@ export type PartOfDay = "morning" | "day" | "evening";
 // Что запись говорит про одну сферу — цель верхнего уровня.
 export interface DiarySphere {
   goal_id: number;
+  // 1–10; null — из записи не понять.
   score: number | null;
   good: string | null;
   bad: string | null;
@@ -62,7 +63,7 @@ export interface DiaryEdit {
   emotions?: string[];
   factors?: string[];
   summary?: string;
-  // Сферы целиком; score 0 — без оценки.
+  // Сферы целиком; score 1–10, 0 — без оценки.
   spheres?: { goal_id: number; score: number; good: string; bad: string }[];
 }
 

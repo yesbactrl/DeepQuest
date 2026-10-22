@@ -580,7 +580,7 @@ DIARY_SCALES = (("mood", "настроение"), ("energy", "энергия"), 
 def _sphere_line(sphere: DiarySphere, title: str) -> str:
     line = f"🎯 <b>{escape(title)}</b>"
     if sphere.score is not None:
-        line += f" {sphere.score}/5"
+        line += f" {sphere.score}/10"
     notes = []
     if sphere.good:
         notes.append(f"👍 {escape(sphere.good)}")

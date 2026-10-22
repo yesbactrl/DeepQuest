@@ -455,7 +455,7 @@ async def test_bot_diary_shows_spheres(
 
     await harness.send(ME, "/d по деньгам тревожно")
 
-    assert "🎯 <b>Капитал</b> 2/5 — 👍 отложил 100$ · 👎 аренда" in harness.last_text
+    assert "🎯 <b>Капитал</b> 2/10 — 👍 отложил 100$ · 👎 аренда" in harness.last_text
 
 
 # XP за записи
@@ -510,3 +510,59 @@ async def test_bot_diary_shows_xp(
     await harness.send(ME, "/d нормально")
 
     assert harness.last_text.startswith("📝 Записал в дневник · +15 XP")
+
+
+async def test_sphere_scores_go_to_ten(
+    client: httpx.AsyncClient, agent: FakeAgent, goal_ids: dict[str, int]
+) -> None:
+    result = analysis()
+    result.spheres = [DiarySphereNote(goal_id=goal_ids["capital"], score=7, good=None, bad=None)]
+    agent.diary.append(result)
+    entry = (await client.post("/api/diary", json={"text": "Деньги"})).json()["entry"]
+    # Агент ставит 1–10: семёрка — уже выше середины старой шкалы, но в границах новой.
+    assert entry["spheres"][0]["score"] == 7
+
+    edited = await client.patch(
+        f"/api/diary/{entry['id']}",
+        json={"spheres": [{"goal_id": goal_ids["capital"], "score": 10}]},
+    )
+    assert edited.json()["spheres"][0]["score"] == 10
+    too_much = await client.patch(
+        f"/api/diary/{entry['id']}",
+        json={"spheres": [{"goal_id": goal_ids["capital"], "score": 11}]},
+    )
+    assert too_much.status_code == 422
+
+
+def test_migration_doubles_old_sphere_scores(tmp_path: Path) -> None:
+    import sqlite3
+
+    from alembic import command
+
+    from deepquest.db.migrate import alembic_config
+
+    db = tmp_path / "old.db"
+    config = alembic_config(db)
+    command.upgrade(config, "0013")
+    with sqlite3.connect(db) as connection:
+        connection.execute(
+            "INSERT INTO users (id, telegram_id, tz, daily_norm_min, morning_at, evening_at,"
+            " day_boundary_hour, freezes_per_week, dashboard_seeded, created_at)"
+            " VALUES (1, 1, 'UTC', 120, '09:00:00', '21:00:00', 4, 2, 0, '2026-10-01')"
+        )
+        connection.execute(
+            "INSERT INTO goals (id, user_id, title, status, growth_only, created_at)"
+            " VALUES (1, 1, 'g', 'active', 0, '2026-10-01')"
+        )
+        connection.execute(
+            "INSERT INTO diary_entries (id, user_id, text, logical_date, part_of_day, emotions,"
+            " factors, status, edited, created_at)"
+            " VALUES (1, 1, 't', '2026-10-21', 'day', '[]', '[]', 'done', 0, '2026-10-21')"
+        )
+        connection.executemany(
+            "INSERT INTO diary_spheres (entry_id, goal_id, score) VALUES (1, ?, ?)",
+            [(1, 4)],
+        )
+    command.upgrade(config, "head")
+    with sqlite3.connect(db) as connection:
+        assert connection.execute("SELECT score FROM diary_spheres").fetchall() == [(8,)]

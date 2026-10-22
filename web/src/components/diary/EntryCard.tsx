@@ -3,7 +3,7 @@ import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconDots, IconPencil, IconRefresh, IconTrash } from "@tabler/icons-react";
 
-import { type DiaryEntry, useAnalyzeEntry, useDeleteEntry } from "../../api/diary";
+import { type DiaryEntry, useAnalyzeEntry, useDeleteEntry, useEditEntry } from "../../api/diary";
 import { useGoals } from "../../api/goals";
 import { PART_OF_DAY, SCALES, entryTime, formatScore, scoreColor } from "../../lib/diary";
 import { SphereNotes } from "./Spheres";
@@ -34,6 +34,21 @@ export function EntryCard({ entry, onEdit }: { entry: DiaryEntry; onEdit: (entry
   const analyze = useAnalyzeEntry(entry.id);
   const remove = useDeleteEntry(entry.id);
   const goals = useGoals();
+  const edit = useEditEntry(entry.id);
+
+  // Быстрая правка оценки сферы прямо в ленте: остальные сферы отправляются как есть.
+  const setSphereScore = (goalId: number, score: number | null) =>
+    edit.mutate(
+      {
+        spheres: entry.spheres.map((s) => ({
+          goal_id: s.goal_id,
+          score: s.goal_id === goalId ? (score ?? 0) : (s.score ?? 0),
+          good: s.good ?? "",
+          bad: s.bad ?? "",
+        })),
+      },
+      { onError: (error) => notifications.show({ color: "red", message: error.message }) },
+    );
 
   const runAnalysis = () =>
     analyze.mutate(undefined, {
@@ -88,7 +103,7 @@ export function EntryCard({ entry, onEdit }: { entry: DiaryEntry; onEdit: (entry
         </Group>
 
         <ScoreBadges values={entry} />
-        <SphereNotes spheres={entry.spheres} goals={goals.data ?? []} />
+        <SphereNotes spheres={entry.spheres} goals={goals.data ?? []} onScore={setSphereScore} />
         {(entry.emotions.length > 0 || entry.factors.length > 0) && (
           <Group gap={4}>
             {entry.emotions.map((emotion) => (

@@ -602,8 +602,8 @@ class DiaryIn(BaseModel):
 
 class DiarySphereIn(BaseModel):
     goal_id: int
-    # 0 или пусто — без оценки.
-    score: int | None = Field(default=None, ge=0, le=5)
+    # 1–10; 0 или пусто — без оценки.
+    score: int | None = Field(default=None, ge=0, le=10)
     good: str | None = Field(default=None, max_length=300)
     bad: str | None = Field(default=None, max_length=300)
 

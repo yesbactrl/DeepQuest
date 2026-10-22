@@ -1,10 +1,10 @@
-import { Badge, Button, Group, ScrollArea, Stack, Text } from "@mantine/core";
+import { Badge, Button, Group, Popover, ScrollArea, Stack, Text } from "@mantine/core";
 import { IconMoodSad, IconMoodSmile } from "@tabler/icons-react";
 
 import type { DiarySphere } from "../../api/diary";
 import type { Goal } from "../../api/goals";
+import { scoreColor } from "../../lib/diary";
 import { goalIcon, useGoalColor } from "../../lib/goalLook";
-import { formatScore, scoreColor } from "../../lib/diary";
 
 // Чипы сфер — целей. `multiple` — у новой записи можно отметить несколько,
 // иначе это фильтр ленты: «все записи» или одна сфера.
@@ -61,8 +61,49 @@ export function SphereChips({
   );
 }
 
+export const SPHERE_MAX = 10;
+
+// Оценка сферы 1–10 кнопками; повторное нажатие на выбранную — убрать оценку.
+export function SphereScorePicker({
+  value,
+  onChange,
+  color,
+}: {
+  value: number | null;
+  onChange: (value: number | null) => void;
+  color?: string;
+}) {
+  return (
+    <Group gap={4} wrap="nowrap">
+      {Array.from({ length: SPHERE_MAX }, (_, i) => i + 1).map((n) => (
+        <Button
+          key={n}
+          size="compact-xs"
+          w={28}
+          px={0}
+          color={color}
+          variant={value === n ? "filled" : "default"}
+          aria-pressed={value === n}
+          onClick={() => onChange(value === n ? null : n)}
+        >
+          {n}
+        </Button>
+      ))}
+    </Group>
+  );
+}
+
 // Заметки записи по сферам: цвет и название цели, оценка, что радует и что огорчает.
-export function SphereNotes({ spheres, goals }: { spheres: DiarySphere[]; goals: Goal[] }) {
+// Оценку можно поправить прямо здесь: нажать на метку и выбрать число.
+export function SphereNotes({
+  spheres,
+  goals,
+  onScore,
+}: {
+  spheres: DiarySphere[];
+  goals: Goal[];
+  onScore?: (goalId: number, score: number | null) => void;
+}) {
   const toHex = useGoalColor();
   const byId = new Map(goals.map((goal) => [goal.id, goal]));
   const known = spheres.filter((sphere) => byId.has(sphere.goal_id));
@@ -72,12 +113,41 @@ export function SphereNotes({ spheres, goals }: { spheres: DiarySphere[]; goals:
       {known.map((sphere) => {
         const goal = byId.get(sphere.goal_id)!;
         const color = toHex(goal.color);
+        const badge = (
+          <Badge
+            variant="light"
+            color={color}
+            size="sm"
+            tt="none"
+            style={{ flexShrink: 0, cursor: onScore ? "pointer" : undefined }}
+            component={onScore ? "button" : undefined}
+            aria-label={onScore ? `Оценка сферы ${goal.title}: изменить` : undefined}
+          >
+            {goal.title}
+            {sphere.score !== null ? ` · ${sphere.score}/${SPHERE_MAX}` : onScore ? " · оценить" : ""}
+          </Badge>
+        );
         return (
           <Group key={sphere.goal_id} gap={6} wrap="nowrap" align="flex-start">
-            <Badge variant="light" color={color} size="sm" tt="none" style={{ flexShrink: 0 }}>
-              {goal.title}
-              {sphere.score !== null && ` · ${formatScore(sphere.score)}`}
-            </Badge>
+            {onScore ? (
+              <Popover position="bottom-start" withinPortal shadow="md">
+                <Popover.Target>{badge}</Popover.Target>
+                <Popover.Dropdown>
+                  <Stack gap={6}>
+                    <Text size="xs" c="dimmed">
+                      {goal.title}: как сейчас, от 1 до {SPHERE_MAX}
+                    </Text>
+                    <SphereScorePicker
+                      value={sphere.score}
+                      color={color}
+                      onChange={(score) => onScore(sphere.goal_id, score)}
+                    />
+                  </Stack>
+                </Popover.Dropdown>
+              </Popover>
+            ) : (
+              badge
+            )}
             <Stack gap={0} style={{ minWidth: 0 }}>
               {sphere.good && (
                 <Text size="xs">

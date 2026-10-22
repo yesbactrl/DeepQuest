@@ -92,9 +92,14 @@ class ReportContext:
 Score = Literal[1, 2, 3, 4, 5]
 
 
+SphereScore = Literal[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+
 class DiarySphereNote(BaseModel):
     goal_id: int = Field(description="id цели из <goals>, про которую говорит запись")
-    score: Score | None = Field(description="Как в этой сфере сейчас, 1–5; null, если не понять")
+    score: SphereScore | None = Field(
+        description="Как в этой сфере сейчас, 1–10; null, если не понять"
+    )
     good: str | None = Field(description="Что в этой сфере радует, до 80 символов; иначе null")
     bad: str | None = Field(
         description="Что огорчает или хочется изменить, до 80 символов; иначе null"

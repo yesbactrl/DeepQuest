@@ -19,10 +19,11 @@ import { useState } from "react";
 import { type DiaryEntry, useEditEntry } from "../../api/diary";
 import { useGoals } from "../../api/goals";
 import { SCALES, type ScaleKey } from "../../lib/diary";
+import { SphereScorePicker } from "./Spheres";
 
 interface SphereDraft {
   goal_id: number;
-  // 0 — без оценки.
+  // 1–10; 0 — без оценки.
   score: number;
   good: string;
   bad: string;
@@ -48,7 +49,10 @@ function SpheresEditor({ value, onChange }: { value: SphereDraft[]; onChange: (n
                 <Text size="sm" fw={600}>
                   {title(sphere.goal_id)}
                 </Text>
-                <Rating count={5} size="sm" value={sphere.score} onChange={(score) => update(index, { score })} />
+                <SphereScorePicker
+                  value={sphere.score || null}
+                  onChange={(score) => update(index, { score: score ?? 0 })}
+                />
               </Group>
               <ActionIcon
                 size="sm"
