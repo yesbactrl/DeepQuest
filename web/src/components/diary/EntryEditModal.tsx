@@ -4,7 +4,6 @@ import {
   Group,
   Modal,
   Paper,
-  Rating,
   Select,
   Stack,
   TagsInput,
@@ -19,7 +18,7 @@ import { useState } from "react";
 import { type DiaryEntry, useEditEntry } from "../../api/diary";
 import { useGoals } from "../../api/goals";
 import { SCALES, type ScaleKey } from "../../lib/diary";
-import { SphereScorePicker } from "./Spheres";
+import { ScorePicker } from "./Spheres";
 
 interface SphereDraft {
   goal_id: number;
@@ -49,7 +48,7 @@ function SpheresEditor({ value, onChange }: { value: SphereDraft[]; onChange: (n
                 <Text size="sm" fw={600}>
                   {title(sphere.goal_id)}
                 </Text>
-                <SphereScorePicker
+                <ScorePicker
                   value={sphere.score || null}
                   onChange={(score) => update(index, { score: score ?? 0 })}
                 />
@@ -137,11 +136,9 @@ function Body({ entry, onClose }: { entry: DiaryEntry; onClose: () => void }) {
             )}
           </Group>
           <Group gap="sm">
-            <Rating
-              count={5}
-              value={scores[scale.key]}
-              onChange={(value) => setScores({ ...scores, [scale.key]: value })}
-              aria-label={scale.label}
+            <ScorePicker
+              value={scores[scale.key] || null}
+              onChange={(value) => setScores({ ...scores, [scale.key]: value ?? 0 })}
             />
             <Text size="xs" c="dimmed">
               {scale.hint}

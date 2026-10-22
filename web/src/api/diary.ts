@@ -20,7 +20,7 @@ export interface DiaryEntry {
   created_at: string;
   logical_date: string;
   part_of_day: PartOfDay;
-  // Шкалы 1–5; null — из записи не понять.
+  // Шкалы 1–10; null — из записи не понять.
   mood: number | null;
   energy: number | null;
   drive: number | null;

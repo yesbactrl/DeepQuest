@@ -2,9 +2,9 @@ import type { DiaryEntry, PartOfDay } from "../api/diary";
 
 // Три шкалы дневника — в том же порядке, что в промпте агента.
 export const SCALES = [
-  { key: "mood", label: "Настроение", short: "настр.", icon: "🙂", hint: "1 — подавлен, 5 — на подъёме" },
-  { key: "energy", label: "Энергия", short: "энергия", icon: "⚡", hint: "1 — без сил, 5 — полон сил" },
-  { key: "drive", label: "Желание действовать", short: "желание", icon: "🔥", hint: "1 — ничего не хочется, 5 — рвусь в бой" },
+  { key: "mood", label: "Настроение", short: "настр.", icon: "🙂", hint: "1 — подавлен, 10 — на подъёме" },
+  { key: "energy", label: "Энергия", short: "энергия", icon: "⚡", hint: "1 — без сил, 10 — полон сил" },
+  { key: "drive", label: "Желание действовать", short: "желание", icon: "🔥", hint: "1 — ничего не хочется, 10 — рвусь в бой" },
 ] as const;
 
 export type ScaleKey = (typeof SCALES)[number]["key"];
@@ -15,10 +15,13 @@ export const PART_OF_DAY: Record<PartOfDay, string> = {
   evening: "вечер",
 };
 
+// Все оценки дневника — настроение, энергия, желание и сферы — по шкале 1–10.
+export const SCORE_MAX = 10;
+
 // Цвет оценки: низкие — тёплые, средние — серые, высокие — зелёные.
 export function scoreColor(value: number): string {
-  if (value < 2.5) return "red";
-  if (value < 3.5) return "gray";
+  if (value < 5) return "red";
+  if (value < 7) return "gray";
   return "teal";
 }
 

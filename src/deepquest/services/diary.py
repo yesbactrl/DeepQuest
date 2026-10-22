@@ -74,16 +74,12 @@ def clean_tags(tags: list[str]) -> list[str]:
     return result[:MAX_TAGS]
 
 
-# Сферы оцениваются подробнее, чем общее состояние: 1–10 против 1–5.
-SPHERE_MAX = 10
-
-
-def _sphere_score(value: int | None) -> int | None:
-    return value if value is not None and 1 <= value <= SPHERE_MAX else None
+# Все оценки дневника — настроение, энергия, желание и сферы — по шкале 1–10.
+SCORE_MAX = 10
 
 
 def _score(value: int | None) -> int | None:
-    return value if value is not None and 1 <= value <= 5 else None
+    return value if value is not None and 1 <= value <= SCORE_MAX else None
 
 
 async def _known_tags(session: AsyncSession, user: User) -> tuple[tuple[str, ...], tuple[str, ...]]:
@@ -135,7 +131,7 @@ def _set_spheres(
 
     def put(goal_id: int, score: int | None, good: str | None, bad: str | None) -> None:
         sphere = existing.get(goal_id) or DiarySphere(goal_id=goal_id)
-        sphere.score, sphere.good, sphere.bad = _sphere_score(score), _note(good), _note(bad)
+        sphere.score, sphere.good, sphere.bad = _score(score), _note(good), _note(bad)
         by_goal[goal_id] = sphere
 
     for note in notes:

@@ -320,7 +320,7 @@ class DiaryEntry(Base):
     logical_date: Mapped[date] = mapped_column(index=True)
     # morning / day / evening — по местному времени записи и границе дня.
     part_of_day: Mapped[str] = mapped_column(String(8))
-    # Шкалы 1–5; пусто — из записи не понять.
+    # Шкалы 1–10; пусто — из записи не понять.
     mood: Mapped[int | None]
     energy: Mapped[int | None]
     # Желание действовать — то самое «ничего не хочется».

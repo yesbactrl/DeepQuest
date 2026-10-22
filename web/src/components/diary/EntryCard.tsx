@@ -19,7 +19,7 @@ export function ScoreBadges({
         const value = values[scale.key];
         if (value === null) return null;
         return (
-          <Tooltip key={scale.key} label={`${scale.label}: ${formatScore(value)} из 5`}>
+          <Tooltip key={scale.key} label={`${scale.label}: ${formatScore(value)} из 10`}>
             <Badge variant="light" color={scoreColor(value)} size="sm" tt="none">
               {scale.icon} {formatScore(value)}
             </Badge>

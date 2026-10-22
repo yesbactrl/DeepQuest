@@ -258,7 +258,7 @@ async def test_diary_api_private_and_reanalyze(client: httpx.AsyncClient, agent:
 async def test_diary_api_validation(client: httpx.AsyncClient) -> None:
     assert (await client.post("/api/diary", json={"text": "   "})).status_code == 422
     assert (await client.post("/api/diary", json={"text": ""})).status_code == 422
-    bad = await client.patch("/api/diary/1", json={"mood": 7})
+    bad = await client.patch("/api/diary/1", json={"mood": 11})
     assert bad.status_code == 422
 
 
@@ -281,7 +281,7 @@ async def test_bot_diary_inline(
     [entry] = await _entries(sessionmaker)
     assert entry.text == "проснулся разбитым, ничего не хочется"
     assert harness.last_text.startswith("📝 Записал в дневник")
-    assert "настроение 2/5 · энергия 2/5 · желание 1/5" in harness.last_text
+    assert "настроение 2/10 · энергия 2/10 · желание 1/10" in harness.last_text
     assert "Что повлияло: плохой сон" in harness.last_text
     # Дневник — не задача: агенту не отправлялось оформление.
     assert [kind for kind, _ in harness.agent.calls] == ["diary"]
@@ -300,7 +300,7 @@ async def test_bot_diary_asks_then_saves_voice(
 
     [entry] = await _entries(sessionmaker)
     assert entry.text == "Вечер спокойный, доволен днём"
-    assert "настроение 4/5" in harness.last_text
+    assert "настроение 4/10" in harness.last_text
 
 
 async def test_bot_diary_cancel_and_agent_down(
@@ -566,3 +566,31 @@ def test_migration_doubles_old_sphere_scores(tmp_path: Path) -> None:
     command.upgrade(config, "head")
     with sqlite3.connect(db) as connection:
         assert connection.execute("SELECT score FROM diary_spheres").fetchall() == [(8,)]
+
+
+def test_migration_doubles_old_state_scores(tmp_path: Path) -> None:
+    import sqlite3
+
+    from alembic import command
+
+    from deepquest.db.migrate import alembic_config
+
+    db = tmp_path / "old.db"
+    config = alembic_config(db)
+    command.upgrade(config, "0014")
+    with sqlite3.connect(db) as connection:
+        connection.execute(
+            "INSERT INTO users (id, telegram_id, tz, daily_norm_min, morning_at, evening_at,"
+            " day_boundary_hour, freezes_per_week, dashboard_seeded, created_at)"
+            " VALUES (1, 1, 'UTC', 120, '09:00:00', '21:00:00', 4, 2, 0, '2026-10-01')"
+        )
+        connection.execute(
+            "INSERT INTO diary_entries (id, user_id, text, logical_date, part_of_day, mood,"
+            " energy, drive, emotions, factors, status, edited, created_at)"
+            " VALUES (1, 1, 't', '2026-10-21', 'day', 4, 2, NULL, '[]', '[]', 'done', 0,"
+            " '2026-10-21')"
+        )
+    command.upgrade(config, "head")
+    with sqlite3.connect(db) as connection:
+        row = connection.execute("SELECT mood, energy, drive FROM diary_entries").fetchone()
+    assert row == (8, 4, None)

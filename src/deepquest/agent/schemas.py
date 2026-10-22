@@ -89,17 +89,14 @@ class ReportContext:
 
 # Дневник
 
-Score = Literal[1, 2, 3, 4, 5]
 
-
-SphereScore = Literal[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+# Все оценки дневника — по шкале 1–10.
+Score = Literal[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
 
 class DiarySphereNote(BaseModel):
     goal_id: int = Field(description="id цели из <goals>, про которую говорит запись")
-    score: SphereScore | None = Field(
-        description="Как в этой сфере сейчас, 1–10; null, если не понять"
-    )
+    score: Score | None = Field(description="Как в этой сфере сейчас, 1–10; null, если не понять")
     good: str | None = Field(description="Что в этой сфере радует, до 80 символов; иначе null")
     bad: str | None = Field(
         description="Что огорчает или хочется изменить, до 80 символов; иначе null"
@@ -108,10 +105,10 @@ class DiarySphereNote(BaseModel):
 
 class DiaryAnalysis(BaseModel):
     mood: Score | None = Field(
-        description="Настроение 1–5 по шкале из инструкции; null, если не понять"
+        description="Настроение 1–10 по шкале из инструкции; null, если не понять"
     )
-    energy: Score | None = Field(description="Энергия 1–5; null, если не понять")
-    drive: Score | None = Field(description="Желание действовать 1–5; null, если не понять")
+    energy: Score | None = Field(description="Энергия 1–10; null, если не понять")
+    drive: Score | None = Field(description="Желание действовать 1–10; null, если не понять")
     emotions: list[str] = Field(description="0–4 эмоции, по одному-два слова, со строчной буквы")
     factors: list[str] = Field(
         description="0–5 факторов, что повлияло на состояние, 1–3 слова каждый"

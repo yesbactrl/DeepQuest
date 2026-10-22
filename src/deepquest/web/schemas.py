@@ -610,10 +610,10 @@ class DiarySphereIn(BaseModel):
 
 class DiaryEditIn(BaseModel):
     text: str | None = Field(default=None, max_length=4000)
-    # 0 — убрать оценку («не знаю»).
-    mood: int | None = Field(default=None, ge=0, le=5)
-    energy: int | None = Field(default=None, ge=0, le=5)
-    drive: int | None = Field(default=None, ge=0, le=5)
+    # 1–10; 0 — убрать оценку («не знаю»).
+    mood: int | None = Field(default=None, ge=0, le=10)
+    energy: int | None = Field(default=None, ge=0, le=10)
+    drive: int | None = Field(default=None, ge=0, le=10)
     emotions: list[str] | None = Field(default=None, max_length=10)
     factors: list[str] | None = Field(default=None, max_length=10)
     summary: str | None = Field(default=None, max_length=200)

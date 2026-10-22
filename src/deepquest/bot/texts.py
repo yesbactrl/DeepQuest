@@ -606,7 +606,7 @@ def diary_entry(
     if entry.summary:
         lines += ["", f"<b>{escape(entry.summary)}</b>"]
     scores = [
-        f"{label} {value}/5"
+        f"{label} {value}/10"
         for name, label in DIARY_SCALES
         if (value := getattr(entry, name)) is not None
     ]

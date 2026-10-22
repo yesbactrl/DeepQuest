@@ -3,7 +3,7 @@ import { IconMoodSad, IconMoodSmile } from "@tabler/icons-react";
 
 import type { DiarySphere } from "../../api/diary";
 import type { Goal } from "../../api/goals";
-import { scoreColor } from "../../lib/diary";
+import { SCORE_MAX, scoreColor } from "../../lib/diary";
 import { goalIcon, useGoalColor } from "../../lib/goalLook";
 
 // Чипы сфер — целей. `multiple` — у новой записи можно отметить несколько,
@@ -61,10 +61,9 @@ export function SphereChips({
   );
 }
 
-export const SPHERE_MAX = 10;
-
-// Оценка сферы 1–10 кнопками; повторное нажатие на выбранную — убрать оценку.
-export function SphereScorePicker({
+// Оценка 1–10 кнопками — для сфер и общего состояния; повторное нажатие на выбранную —
+// убрать оценку.
+export function ScorePicker({
   value,
   onChange,
   color,
@@ -75,7 +74,7 @@ export function SphereScorePicker({
 }) {
   return (
     <Group gap={4} wrap="nowrap">
-      {Array.from({ length: SPHERE_MAX }, (_, i) => i + 1).map((n) => (
+      {Array.from({ length: SCORE_MAX }, (_, i) => i + 1).map((n) => (
         <Button
           key={n}
           size="compact-xs"
@@ -124,7 +123,7 @@ export function SphereNotes({
             aria-label={onScore ? `Оценка сферы ${goal.title}: изменить` : undefined}
           >
             {goal.title}
-            {sphere.score !== null ? ` · ${sphere.score}/${SPHERE_MAX}` : onScore ? " · оценить" : ""}
+            {sphere.score !== null ? ` · ${sphere.score}/${SCORE_MAX}` : onScore ? " · оценить" : ""}
           </Badge>
         );
         return (
@@ -135,9 +134,9 @@ export function SphereNotes({
                 <Popover.Dropdown>
                   <Stack gap={6}>
                     <Text size="xs" c="dimmed">
-                      {goal.title}: как сейчас, от 1 до {SPHERE_MAX}
+                      {goal.title}: как сейчас, от 1 до {SCORE_MAX}
                     </Text>
-                    <SphereScorePicker
+                    <ScorePicker
                       value={sphere.score}
                       color={color}
                       onChange={(score) => onScore(sphere.goal_id, score)}

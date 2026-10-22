@@ -103,13 +103,13 @@ function Load({ minutes, xp, norm }: { minutes: number; xp: number; norm: number
 // Мало сил по дневнику — подсказка разгрузить сегодняшний день.
 function EnergyHint({ plan }: { plan: Plan }) {
   const low = [
-    plan.energy_today !== null && plan.energy_today <= 2 ? `энергия ${plan.energy_today}` : null,
-    plan.drive_today !== null && plan.drive_today <= 2 ? `желание действовать ${plan.drive_today}` : null,
+    plan.energy_today !== null && plan.energy_today <= 4 ? `энергия ${plan.energy_today}` : null,
+    plan.drive_today !== null && plan.drive_today <= 4 ? `желание действовать ${plan.drive_today}` : null,
   ].filter(Boolean);
   if (low.length === 0) return null;
   return (
     <Alert color="yellow" variant="light" icon={<IconBolt size={18} />}>
-      По дневнику сегодня {low.join(" и ")} из 5 — может, оставить на сегодня поменьше?
+      По дневнику сегодня {low.join(" и ")} из 10 — может, оставить на сегодня поменьше?
     </Alert>
   );
 }
