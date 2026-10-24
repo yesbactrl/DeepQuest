@@ -3,9 +3,10 @@
 from datetime import date, datetime, time
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from deepquest.db.models import (
+    DayStatus,
     DiaryEntry,
     DiaryStatus,
     Goal,
@@ -21,6 +22,7 @@ from deepquest.services.charts import ChartConfig, ChartData
 from deepquest.services.diary import Day
 from deepquest.services.goals import MAX_TITLE_LEN, MAX_WHY_LEN, PALETTE, goal_path
 from deepquest.services.levels import Level
+from deepquest.services.review import PeriodKind, PeriodReview
 from deepquest.services.stats import GoalStats, TaskTotals
 from deepquest.services.summary import Summary
 
@@ -621,6 +623,18 @@ class DiaryEditIn(BaseModel):
     spheres: list[DiarySphereIn] | None = Field(default=None, max_length=20)
 
 
+class SearchTaskOut(BaseModel):
+    task: TaskOut
+    # Где нашлось и кусок текста вокруг; пусто — нашлось в названии.
+    where: str | None
+    snippet: str | None
+
+
+class SearchOut(BaseModel):
+    tasks: list[SearchTaskOut]
+    entries: list[DiaryEntryOut]
+
+
 class DiaryEntryResult(BaseModel):
     entry: DiaryEntryOut
     agent_failed: bool
@@ -653,3 +667,116 @@ class PlanOut(BaseModel):
     overdue: list[TaskOut]
     energy_today: float | None
     drive_today: float | None
+
+
+# Итоги периода
+
+
+class _FromAttrs(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TotalsOut(_FromAttrs):
+    xp: int
+    minutes: int
+    done_tasks: int
+    entries: int
+    norm_met: int
+    norm_days: int
+
+
+class StateOut(_FromAttrs):
+    mood: float | None
+    energy: float | None
+    drive: float | None
+
+
+class SphereReviewOut(_FromAttrs):
+    goal_id: int
+    title: str
+    xp: int
+    prev_xp: int
+    minutes: int
+    done_tasks: int
+    score: float | None
+    prev_score: float | None
+    mentions: int
+    good: list[str]
+    bad: list[str]
+
+
+class DayPointOut(_FromAttrs):
+    day: date
+    state: float | None
+    focus_min: int
+    xp: int
+    status: DayStatus | None
+
+
+class DayGroupOut(_FromAttrs):
+    days: int
+    focus_min: float | None
+    xp: float | None
+    factors: list[tuple[str, int]]
+
+
+class TopTaskOut(_FromAttrs):
+    id: int
+    title: str
+    goal_id: int | None
+    xp: int
+
+
+class ReviewAnalysisOut(_FromAttrs):
+    summary: str
+    wins: list[str]
+    struggles: list[str]
+    patterns: list[str]
+    next_steps: list[str]
+
+
+class ReviewOut(BaseModel):
+    kind: PeriodKind
+    first: date
+    last: date
+    end: date
+    label: str
+    in_progress: bool
+    totals: TotalsOut
+    prev_totals: TotalsOut
+    state: StateOut
+    prev_state: StateOut
+    spheres: list[SphereReviewOut]
+    days: list[DayPointOut]
+    bad_days: DayGroupOut
+    good_days: DayGroupOut
+    emotions: list[tuple[str, int]]
+    factors: list[tuple[str, int]]
+    top_tasks: list[TopTaskOut]
+    analysis: ReviewAnalysisOut | None
+    analyzed_at: datetime | None
+
+    @classmethod
+    def of(cls, review: PeriodReview) -> ReviewOut:
+        return cls.model_validate(
+            {
+                **{
+                    name: getattr(review, name)
+                    for name in (
+                        "end", "totals", "prev_totals", "state", "prev_state", "spheres",
+                        "days", "bad_days", "good_days", "emotions", "factors", "top_tasks",
+                        "analysis", "analyzed_at", "in_progress",
+                    )
+                },
+                "kind": review.period.kind,
+                "first": review.period.first,
+                "last": review.period.last,
+                "label": review.period.label,
+            },
+            from_attributes=True,
+        )  # fmt: skip
+
+
+class ReviewAnalyzeOut(BaseModel):
+    review: ReviewOut
+    agent_failed: bool

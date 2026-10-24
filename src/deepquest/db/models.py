@@ -364,6 +364,25 @@ class DiarySphere(Base):
     entry: Mapped[DiaryEntry] = relationship(back_populates="spheres")
 
 
+class Review(Base):
+    """Разбор периода агентом — недели или месяца. Цифры итогов считаются на лету, а текст
+    разбора хранится: его не надо ждать заново. Повторный разбор перезаписывает прошлый."""
+
+    __tablename__ = "reviews"
+    __table_args__ = (UniqueConstraint("user_id", "kind", "first_day"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(8))  # week / month
+    first_day: Mapped[date]
+    # Ответ агента как есть (agent.schemas.ReviewAnalysis).
+    data: Mapped[dict[str, Any]] = mapped_column(JSON)
+    agent_call_id: Mapped[int | None] = mapped_column(
+        ForeignKey("agent_calls.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
 class VoiceTranscript(Base):
     """Последние расшифровки диктовок — страховка: если поле закрылось или вкладку обновили,
     пока шло распознавание, текст можно вставить из истории. Хранятся только последние."""

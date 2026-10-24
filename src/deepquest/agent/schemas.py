@@ -135,3 +135,28 @@ class DiaryContext:
     goals: tuple[GoalContext, ...] = ()
     # Цели, которые пользователь сам отметил у записи: про них агент пишет обязательно.
     chosen_goal_ids: tuple[int, ...] = ()
+
+
+# Итоги периода
+
+
+class ReviewAnalysis(BaseModel):
+    summary: str = Field(description="Главное о периоде в 2–3 предложениях, на «ты»")
+    wins: list[str] = Field(description="0–4 удачи периода, по одной фразе, с цифрами из итогов")
+    struggles: list[str] = Field(description="0–4 вещи, которые буксовали или огорчали")
+    patterns: list[str] = Field(
+        description="0–3 связи: что сопровождало хорошие и плохие дни, только по данным"
+    )
+    next_steps: list[str] = Field(
+        description="1–3 конкретных фокуса на следующий период, выполнимых и проверяемых"
+    )
+
+
+@dataclass(frozen=True)
+class ReviewContext:
+    """Итоги периода для разбора: цифры и записи уже собраны сервисом в текст."""
+
+    # «неделя 19–25 октября (идёт, прошло 6 дней из 7)».
+    period: str
+    digest: str
+    goals: tuple[GoalContext, ...] = ()

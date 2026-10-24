@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import SecretStr, field_validator
+from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 DEFAULT_DATA_DIR = Path.home() / "Library" / "Application Support" / "DeepQuest"
@@ -38,7 +38,9 @@ class AgentSettings(BaseSettings):
 class Settings(AgentSettings):
     """Настройки процесса. Читаются из переменных окружения и файла .env."""
 
-    bot_token: SecretStr
+    # Бот в Telegram можно выключить: тогда процесс поднимает только веб, а токен не нужен.
+    bot_enabled: bool = True
+    bot_token: SecretStr | None = None
     # Пустой список включает режим первой настройки: бот отвечает любому
     # пользователю его telegram_id, чтобы его можно было вписать в .env.
     allowed_telegram_ids: Annotated[list[int], NoDecode] = []
@@ -68,6 +70,12 @@ class Settings(AgentSettings):
         if isinstance(value, int):
             return [value]
         return value
+
+    @model_validator(mode="after")
+    def _token_if_bot(self) -> Settings:
+        if self.bot_enabled and self.bot_token is None:
+            raise ValueError("BOT_TOKEN не задан: впиши его или выключи бота (BOT_ENABLED=false)")
+        return self
 
     @field_validator("data_dir", mode="after")
     @classmethod

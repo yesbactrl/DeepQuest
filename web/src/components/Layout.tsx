@@ -9,18 +9,20 @@ import {
   useComputedColorScheme,
   useMantineColorScheme,
 } from "@mantine/core";
-import { useDisclosure } from "@mantine/hooks";
+import { useDisclosure, useHotkeys } from "@mantine/hooks";
 import {
   IconCalendarWeek,
   IconLayoutDashboard,
   IconListCheck,
   IconMoon,
   IconNotebook,
+  IconReportAnalytics,
+  IconSearch,
   IconSun,
   IconTarget,
   IconUserStar,
 } from "@tabler/icons-react";
-import { NavLink as RouterLink, Outlet, useLocation } from "react-router";
+import { NavLink as RouterLink, Outlet, useLocation, useNavigate } from "react-router";
 
 import { TimerWidget } from "./TimerWidget";
 
@@ -30,7 +32,9 @@ const SECTIONS = [
   { to: "/tasks", label: "Задачи", icon: IconListCheck },
   { to: "/plan", label: "План", icon: IconCalendarWeek },
   { to: "/diary", label: "Дневник", icon: IconNotebook },
+  { to: "/review", label: "Итоги", icon: IconReportAnalytics },
   { to: "/goals", label: "Цели", icon: IconTarget },
+  { to: "/search", label: "Поиск", icon: IconSearch },
 ];
 
 function ColorSchemeToggle() {
@@ -55,6 +59,9 @@ function ColorSchemeToggle() {
 export function Layout() {
   const [opened, { toggle, close }] = useDisclosure();
   const { pathname } = useLocation();
+  const navigate = useNavigate();
+  // ⌘K / Ctrl+K — поиск с любой страницы, даже из поля ввода.
+  useHotkeys([["mod+K", () => navigate("/search")]], []);
 
   return (
     <AppShell
@@ -73,6 +80,18 @@ export function Layout() {
           </Group>
           <Group gap="sm" wrap="nowrap">
             <TimerWidget />
+            <Tooltip label="Поиск · ⌘K">
+              <ActionIcon
+                variant="subtle"
+                color="gray"
+                size="lg"
+                aria-label="Поиск"
+                component={RouterLink}
+                to="/search"
+              >
+                <IconSearch size={18} />
+              </ActionIcon>
+            </Tooltip>
             <ColorSchemeToggle />
           </Group>
         </Group>

@@ -31,6 +31,8 @@ from deepquest.agent.schemas import (
     GoalContext,
     PlanResult,
     ReportContext,
+    ReviewAnalysis,
+    ReviewContext,
     TaskDraft,
     TasksResult,
     ValidationResult,
@@ -252,6 +254,8 @@ class FakeAgent:
         self.validations: list[ValidationResult | AgentError] = []
         self.diary: list[DiaryAnalysis | AgentError] = []
         self.diary_entries: list[DiaryContext] = []
+        self.reviews: list[ReviewAnalysis | AgentError] = []
+        self.review_contexts: list[ReviewContext] = []
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self.reports: list[ReportContext] = []
 
@@ -288,6 +292,11 @@ class FakeAgent:
         self.diary_entries.append(entry)
         self.calls.append(("diary", {"entry": entry}))
         return self._next(self.diary, "analyze_diary")
+
+    async def review_period(self, review: ReviewContext) -> AgentResult[ReviewAnalysis]:
+        self.review_contexts.append(review)
+        self.calls.append(("review", {"review": review}))
+        return self._next(self.reviews, "review_period")
 
     async def validate_report(self, report: ReportContext) -> AgentResult[ValidationResult]:
         self.reports.append(report)

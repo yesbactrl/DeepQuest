@@ -26,6 +26,8 @@ from deepquest.agent.schemas import (
     GoalContext,
     PlanResult,
     ReportContext,
+    ReviewAnalysis,
+    ReviewContext,
     TaskDraft,
     TasksResult,
     ValidationResult,
@@ -103,6 +105,8 @@ class TaskAgent(Protocol):
     async def validate_report(self, report: ReportContext) -> AgentResult[ValidationResult]: ...
 
     async def analyze_diary(self, entry: DiaryContext) -> AgentResult[DiaryAnalysis]: ...
+
+    async def review_period(self, review: ReviewContext) -> AgentResult[ReviewAnalysis]: ...
 
 
 @dataclass(frozen=True)
@@ -208,6 +212,11 @@ class PromptedAgent(ABC):
         )
         # Разметка дневника — работа того же калибра, что оформление задач: Haiku.
         self._diary = Route(Prompt.load("analyze_diary"), tuple(plan_models), config.plan_effort)
+        # Итоги — редкий и вдумчивый разбор: та же модель, что проверяет отчёты.
+        review_models = dict.fromkeys((config.validate_model, config.plan_model))
+        self._review = Route(
+            Prompt.load("review_period"), tuple(review_models), config.validate_effort
+        )
 
     async def plan_task(self, text: str, goals: Sequence[GoalContext]) -> AgentResult[PlanResult]:
         content = "\n\n".join(
@@ -289,6 +298,17 @@ class PromptedAgent(ABC):
             parts.append(_block("known_emotions", ", ".join(entry.known_emotions)))
         parts += [_block("entry", entry.text), "Разметь запись дневника."]
         return await self._run("analyze_diary", self._diary, "\n\n".join(parts), [], DiaryAnalysis)
+
+    async def review_period(self, review: ReviewContext) -> AgentResult[ReviewAnalysis]:
+        content = "\n\n".join(
+            [
+                render_goals(review.goals),
+                _block("period", review.period),
+                _block("digest", review.digest),
+                "Подведи итоги периода.",
+            ]
+        )
+        return await self._run("review_period", self._review, content, [], ReviewAnalysis)
 
     async def _run[T: BaseModel](
         self,
@@ -375,3 +395,6 @@ class FallbackAgent:
 
     async def analyze_diary(self, entry: DiaryContext) -> AgentResult[DiaryAnalysis]:
         return await self._either("analyze_diary", entry)
+
+    async def review_period(self, review: ReviewContext) -> AgentResult[ReviewAnalysis]:
+        return await self._either("review_period", review)

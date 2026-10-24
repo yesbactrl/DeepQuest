@@ -12,6 +12,7 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconCheck, IconPlayerPause, IconPlayerPlay, type Icon } from "@tabler/icons-react";
+import type { ReactNode } from "react";
 
 import { type Task, useStart, useTaskAction } from "../../api/tasks";
 import { formatMinutes } from "../../lib/format";
@@ -169,7 +170,7 @@ function Actions({ task, onOpen }: { task: Task; onOpen: (id: number) => void })
   );
 }
 
-function Row({ task, onOpen }: { task: Task; onOpen: (id: number) => void }) {
+function Row({ task, onOpen, note }: { task: Task; onOpen: (id: number) => void; note?: ReactNode }) {
   return (
     <Paper withBorder p="sm" className="task-row">
       <Group wrap="nowrap" gap="sm">
@@ -182,6 +183,7 @@ function Row({ task, onOpen }: { task: Task; onOpen: (id: number) => void }) {
             <Text size="xs" c="dimmed" truncate>
               {meta(task) || "без цели"}
             </Text>
+            {note}
           </Stack>
         </UnstyledButton>
         <Actions task={task} onOpen={onOpen} />
@@ -195,11 +197,14 @@ export function TaskList({
   loading,
   empty,
   onOpen,
+  notes,
 }: {
   tasks: Task[] | undefined;
   loading: boolean;
   empty: string;
   onOpen: (id: number) => void;
+  // Подпись под строкой по id задачи — например, где нашлось в поиске.
+  notes?: Record<number, ReactNode>;
 }) {
   if (loading) {
     return (
@@ -220,7 +225,7 @@ export function TaskList({
   return (
     <Stack gap="xs">
       {tasks.map((task) => (
-        <Row key={task.id} task={task} onOpen={onOpen} />
+        <Row key={task.id} task={task} onOpen={onOpen} note={notes?.[task.id]} />
       ))}
     </Stack>
   );

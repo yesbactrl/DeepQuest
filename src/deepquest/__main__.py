@@ -46,7 +46,7 @@ async def _serve_web(server: _WebServer) -> None:
     try:
         await server.serve()
     except SystemExit:
-        # uvicorn выходит через sys.exit, если не смог занять порт. Бот при этом пусть работает.
+        # uvicorn выходит через sys.exit, если не смог занять порт: останавливаемся целиком.
         logger.error("Веб не запустился: порт %s занят?", server.config.port)
 
 
@@ -58,10 +58,14 @@ async def _poll_bot(dispatcher: Dispatcher, bot: Bot) -> None:
 async def run(settings: Settings) -> None:
     engine = create_engine(settings.database_path)
     sessionmaker = create_sessionmaker(engine)
-    bot = Bot(
-        settings.bot_token.get_secret_value(),
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-    )
+    bot = None
+    if settings.bot_enabled and settings.bot_token is not None:
+        bot = Bot(
+            settings.bot_token.get_secret_value(),
+            default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+        )
+    else:
+        logger.info("Бот в Telegram выключен (BOT_ENABLED=false): работает только веб")
     agent = build_agent(settings)
     logger.info("Агент: %s", agent.description)
     # Одно хранилище пруфов на бота и веб: отчёт из одного можно перепроверить из другого.
@@ -74,16 +78,20 @@ async def run(settings: Settings) -> None:
         )
         logger.info("Голос: %s", transcriber.description)
         warm_up = asyncio.create_task(transcriber.warm_up(), name="voice-warm-up")
-    dispatcher = build_dispatcher(
-        sessionmaker, settings.allowed_telegram_ids, agent.agent, proofs, transcriber
-    )
+    dispatcher = None
+    if bot is not None:
+        dispatcher = build_dispatcher(
+            sessionmaker, settings.allowed_telegram_ids, agent.agent, proofs, transcriber
+        )
 
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, stop.set)
 
-    workers = [asyncio.create_task(_poll_bot(dispatcher, bot), name="bot")]
+    workers: list[asyncio.Task[None]] = []
+    if bot is not None and dispatcher is not None:
+        workers.append(asyncio.create_task(_poll_bot(dispatcher, bot), name="bot"))
     # Бэкап не входит в workers: его цикл бесконечен, при остановке задачу просто отменяем.
     backups = asyncio.create_task(
         run_backups(settings.database_path, settings.backups_dir), name="backups"
@@ -97,7 +105,8 @@ async def run(settings: Settings) -> None:
             settings.web_dist_dir,
             agent.agent,
             proofs,
-            telegram_download(bot),
+            # Без бота скриншоты, присланные когда-то в Telegram, веб не покажет.
+            telegram_download(bot) if bot is not None else None,
             transcriber,
         )
         server = _WebServer(
@@ -113,9 +122,9 @@ async def run(settings: Settings) -> None:
         logger.info("Веб: http://%s:%s", settings.web_host, settings.web_port)
 
     try:
-        # Останавливаемся по сигналу или если бот упал.
+        # Останавливаемся по сигналу или если бот либо веб упал: служба поднимет заново.
         stopper = asyncio.create_task(stop.wait())
-        await asyncio.wait([stopper, workers[0]], return_when=asyncio.FIRST_COMPLETED)
+        await asyncio.wait([stopper, *workers], return_when=asyncio.FIRST_COMPLETED)
         stopper.cancel()
     finally:
         logger.info("Останавливаюсь…")
@@ -124,13 +133,15 @@ async def run(settings: Settings) -> None:
             warm_up.cancel()
         if server is not None:
             server.should_exit = True
-        with contextlib.suppress(RuntimeError):  # поллинг уже остановлен
-            await dispatcher.stop_polling()
+        if dispatcher is not None:
+            with contextlib.suppress(RuntimeError):  # поллинг уже остановлен
+                await dispatcher.stop_polling()
         results = await asyncio.gather(*workers, return_exceptions=True)
         for task, result in zip(workers, results, strict=True):
             if isinstance(result, Exception):
                 logger.error("%s завершился с ошибкой", task.get_name(), exc_info=result)
-        await bot.session.close()
+        if bot is not None:
+            await bot.session.close()
         await agent.aclose()
         await engine.dispose()
 

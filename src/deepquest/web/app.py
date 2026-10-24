@@ -12,7 +12,18 @@ from deepquest.agent.base import TaskAgent
 from deepquest.services.proofs import ProofStore, TelegramDownload
 from deepquest.services.voice import Transcriber
 from deepquest.web.deps import WebContext
-from deepquest.web.routes import character, dashboard, diary, goals, me, plan, tasks, voice
+from deepquest.web.routes import (
+    character,
+    dashboard,
+    diary,
+    goals,
+    me,
+    plan,
+    review,
+    search,
+    tasks,
+    voice,
+)
 from deepquest.web.security import ALLOWED_HOSTS, CsrfHeaderMiddleware
 
 NOT_BUILT = """<!doctype html><meta charset="utf-8"><title>DeepQuest</title>
@@ -53,6 +64,8 @@ def create_app(
     app.include_router(diary.router)
     app.include_router(plan.router)
     app.include_router(voice.router)
+    app.include_router(search.router)
+    app.include_router(review.router)
 
     @app.api_route("/api/{path:path}", methods=["GET", "POST", "PATCH", "PUT", "DELETE"])
     async def unknown_api(path: str) -> None:
