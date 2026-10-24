@@ -593,7 +593,7 @@ def digest(review: PeriodReview) -> str:
     return "\n".join(lines)
 
 
-def _period_text(review: PeriodReview) -> str:
+def period_text(review: PeriodReview) -> str:
     name = "неделя" if review.period.kind == PeriodKind.WEEK else "месяц"
     text = f"{name} {review.period.label}"
     if review.in_progress:
@@ -607,7 +607,7 @@ async def analyze(
 ) -> bool:
     """Разбор агентом; False — агент недоступен. Сохранённый разбор перезаписывается."""
     context = ReviewContext(
-        period=_period_text(review),
+        period=period_text(review),
         digest=digest(review),
         goals=tuple(await goal_context(session, user)),
     )

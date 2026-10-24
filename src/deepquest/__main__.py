@@ -175,6 +175,10 @@ def main() -> None:
         from deepquest.service import main as service_main
 
         sys.exit(service_main(sys.argv[2:]))
+    if sys.argv[1:2] == ["mcp"]:
+        from deepquest.mcp_server import main as mcp_main
+
+        sys.exit(mcp_main(sys.argv[2:]))
     try:
         settings = Settings()
     except ValidationError as exc:

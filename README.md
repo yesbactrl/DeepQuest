@@ -61,6 +61,28 @@ cd web && npm install && npm run build
 cd web && npm run dev
 ```
 
+## Советник
+
+С данными DeepQuest можно просто разговаривать: про задачи, план, сон, самочувствие. Это MCP-сервер `uv run deepquest mcp` — Claude Desktop или Claude Code запускают его сами и через него читают задачи, цели, план, дневник, сон, итоги и поиск, а по просьбе заводят задачу, ставят её на день, пишут в дневник или записывают сон. Удалять и начислять XP советник не может. Каждый чат в клиенте — отдельный разговор со своим контекстом.
+
+Claude Desktop — в `~/Library/Application Support/Claude/claude_desktop_config.json`, затем перезапустить приложение:
+
+```json
+"mcpServers": {
+  "deepquest": {
+    "command": "/opt/homebrew/bin/uv",
+    "args": ["run", "--directory", "/Users/<ты>/DeepQuest", "deepquest", "mcp"],
+    "env": { "PATH": "/opt/homebrew/bin:/Users/<ты>/.local/bin:/usr/bin:/bin" }
+  }
+}
+```
+
+Claude Code:
+
+```bash
+claude mcp add --scope user deepquest -- /opt/homebrew/bin/uv run --directory /Users/<ты>/DeepQuest deepquest mcp
+```
+
 ## Разработка
 
 ```bash
