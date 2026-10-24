@@ -11,6 +11,7 @@ from deepquest.db.models import (
     DiaryStatus,
     Goal,
     GoalStatus,
+    SleepKind,
     Task,
     TaskStatus,
     User,
@@ -711,6 +712,7 @@ class DayPointOut(_FromAttrs):
     focus_min: int
     xp: int
     status: DayStatus | None
+    sleep_min: int | None
 
 
 class DayGroupOut(_FromAttrs):
@@ -753,6 +755,9 @@ class ReviewOut(BaseModel):
     emotions: list[tuple[str, int]]
     factors: list[tuple[str, int]]
     top_tasks: list[TopTaskOut]
+    sleep: SleepStatsOut
+    prev_sleep: SleepStatsOut
+    sleep_goal_min: int
     analysis: ReviewAnalysisOut | None
     analyzed_at: datetime | None
 
@@ -765,7 +770,8 @@ class ReviewOut(BaseModel):
                     for name in (
                         "end", "totals", "prev_totals", "state", "prev_state", "spheres",
                         "days", "bad_days", "good_days", "emotions", "factors", "top_tasks",
-                        "analysis", "analyzed_at", "in_progress",
+                        "analysis", "analyzed_at", "in_progress", "sleep", "prev_sleep",
+                        "sleep_goal_min",
                     )
                 },
                 "kind": review.period.kind,
@@ -780,3 +786,71 @@ class ReviewOut(BaseModel):
 class ReviewAnalyzeOut(BaseModel):
     review: ReviewOut
     agent_failed: bool
+
+
+# Сон
+
+
+class SleepIn(BaseModel):
+    kind: SleepKind = SleepKind.NIGHT
+    # Местное время пользователя без пояса: «2026-10-24T07:00».
+    start: datetime
+    end: datetime
+    quality: int | None = Field(default=None, ge=1, le=10)
+    note: str | None = Field(default=None, max_length=300)
+
+
+class SleepGoalIn(BaseModel):
+    goal_min: int = Field(ge=240, le=720)
+
+
+class SleepSessionOut(BaseModel):
+    id: int
+    kind: SleepKind
+    # Местное время пользователя без пояса.
+    start: datetime
+    end: datetime
+    day: date
+    minutes: int
+    quality: int | None
+    note: str | None
+
+
+class SleepDayOut(BaseModel):
+    day: date
+    night_min: int
+    nap_min: int
+    total_min: int
+    bedtime: datetime | None
+    wake: datetime | None
+    quality: float | None
+    sessions: list[SleepSessionOut]
+
+
+class SleepGroupOut(_FromAttrs):
+    days: int
+    state: float | None
+    focus_min: float | None
+
+
+class SleepStatsOut(_FromAttrs):
+    days: int
+    avg_total_min: int | None
+    avg_night_min: int | None
+    avg_nap_min: int | None
+    avg_bedtime: int | None
+    avg_wake: int | None
+    bedtime_spread_min: int | None
+    goal_met: int
+    debt_min: int
+    avg_quality: float | None
+    short: SleepGroupOut
+    enough: SleepGroupOut
+
+
+class SleepOut(BaseModel):
+    first: date
+    last: date
+    goal_min: int
+    days: list[SleepDayOut]
+    stats: SleepStatsOut

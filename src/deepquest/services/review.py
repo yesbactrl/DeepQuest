@@ -39,10 +39,12 @@ from deepquest.db.models import (
     XpKind,
 )
 from deepquest.services import goals as goals_service
+from deepquest.services import sleep as sleep_service
 from deepquest.services.agent_log import record_calls
 from deepquest.services.days import split_by_day, user_day_bounds, user_logical_date
 from deepquest.services.diary import MONTHS, PARTS_OF_DAY
 from deepquest.services.planning import goal_context
+from deepquest.services.sleep import SleepStats
 
 logger = logging.getLogger(__name__)
 
@@ -144,6 +146,8 @@ class DayPoint:
     focus_min: int
     xp: int
     status: DayStatus | None
+    # Сколько спал перед этим днём и днём; None — сон не записан.
+    sleep_min: int | None = None
 
 
 @dataclass(frozen=True)
@@ -180,6 +184,9 @@ class PeriodReview:
     emotions: list[tuple[str, int]]
     factors: list[tuple[str, int]]
     top_tasks: list[TopTask]
+    sleep: SleepStats
+    prev_sleep: SleepStats
+    sleep_goal_min: int
     analysis: ReviewAnalysis | None = None
     analyzed_at: datetime | None = None
     # Только для разбора агентом: что сделано и что писал.
@@ -354,6 +361,12 @@ async def build_review(
 
     current = await _window(session, user, period.first, end, now)
     before = await _window(session, user, prev.first, prev_end, now)
+    sleep_now = sleep_service.by_day(
+        user, await sleep_service.sessions_between(session, user, period.first, end)
+    )
+    sleep_before = sleep_service.by_day(
+        user, await sleep_service.sessions_between(session, user, prev.first, prev_end)
+    )
     roots = await _roots(session, user)
 
     xp_now, xp_before = _by_root(current.xp_by_goal, roots), _by_root(before.xp_by_goal, roots)
@@ -394,6 +407,7 @@ async def build_review(
                 focus_min=int(current.minutes_by_day.get(day, 0)),
                 xp=current.xp_by_day.get(day, 0),
                 status=current.statuses.get(day),
+                sleep_min=sleep_now[day].total_min if day in sleep_now else None,
             )
         )
         day += timedelta(days=1)
@@ -441,6 +455,11 @@ async def build_review(
         prev_totals=before.totals(),
         state=current.state(),
         prev_state=before.state(),
+        sleep=await sleep_service.stats(session, user, sleep_now, period.first, end, now),
+        prev_sleep=await sleep_service.stats(
+            session, user, sleep_before, prev.first, prev_end, now
+        ),
+        sleep_goal_min=user.sleep_goal_min,
         spheres=[sphere(goal) for goal in await goals_service.list_goals(session, user)],
         days=days,
         bad_days=_group([d for d, s in states.items() if s < BAD_BELOW], current, factors_by_day),
@@ -478,6 +497,33 @@ def _factor_list(items: list[tuple[str, int]]) -> str:
     return ", ".join(f"{name} ×{count}" for name, count in items) or "—"
 
 
+def _clock(minutes: int | None) -> str:
+    return "—" if minutes is None else f"{minutes // 60:02d}:{minutes % 60:02d}"
+
+
+def _sleep_digest(review: PeriodReview) -> list[str]:
+    s, p = review.sleep, review.prev_sleep
+    lines = [f"## Сон (норма {_hours(review.sleep_goal_min)}, сон относится к дню пробуждения)"]
+    if not s.days:
+        return [*lines, "- сон не записан"]
+    lines += [
+        f"- Записан за {s.days} дн.; в среднем {_hours(s.avg_total_min)} "
+        f"(было {_hours(p.avg_total_min)}), из них днём {_hours(s.avg_nap_min)}",
+        f"- Отбой в среднем {_clock(s.avg_bedtime)}"
+        + (f" ± {s.bedtime_spread_min} мин" if s.bedtime_spread_min is not None else "")
+        + f", подъём {_clock(s.avg_wake)}",
+        f"- Выспался {s.goal_met} из {s.days} дн., недосып за период {_hours(s.debt_min)}",
+        f"- Качество сна: {_vs(s.avg_quality, p.avg_quality)}",
+    ]
+    for title, group in (("Не выспался", s.short), ("Выспался", s.enough)):
+        if group.days:
+            lines.append(
+                f"- {title} ({group.days} дн.): состояние {group.state or '—'}, "
+                f"фокус {_hours(group.focus_min)}"
+            )
+    return lines
+
+
 def digest(review: PeriodReview) -> str:
     """Итоги периода текстом для агента."""
     t, p = review.totals, review.prev_totals
@@ -493,6 +539,8 @@ def digest(review: PeriodReview) -> str:
         f"- Настроение: {_vs(review.state.mood, review.prev_state.mood)}",
         f"- Энергия: {_vs(review.state.energy, review.prev_state.energy)}",
         f"- Желание действовать: {_vs(review.state.drive, review.prev_state.drive)}",
+        "",
+        *_sleep_digest(review),
         "",
         "## Сферы",
     ]

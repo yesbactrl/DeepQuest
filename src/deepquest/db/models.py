@@ -65,6 +65,8 @@ class User(Base):
     dashboard_seeded: Mapped[bool] = mapped_column(default=False, server_default=text("0"))
     # Норма и стрик на паузе с этого момента: дни не закрываются, стрик не рвётся.
     streak_paused_at: Mapped[datetime | None]
+    # Сколько сна в сутки считаем нормой — ночь вместе с дневным сном.
+    sleep_goal_min: Mapped[int] = mapped_column(default=480, server_default=text("480"))
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 
@@ -362,6 +364,29 @@ class DiarySphere(Base):
     bad: Mapped[str | None] = mapped_column(Text)  # что огорчает
 
     entry: Mapped[DiaryEntry] = relationship(back_populates="spheres")
+
+
+class SleepKind(StrEnum):
+    NIGHT = "night"
+    NAP = "nap"  # дневной сон
+
+
+class SleepSession(Base):
+    """Отрезок сна. Сон относится к дню, когда проснулся: ночь 23:30–07:00 — это сон
+    «на 24 октября», если встал 24-го. День считается по местной дате пробуждения."""
+
+    __tablename__ = "sleep_sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[SleepKind] = mapped_column(_str_enum(SleepKind))
+    started_at: Mapped[datetime]
+    ended_at: Mapped[datetime]
+    day: Mapped[date] = mapped_column(index=True)
+    # Как выспался, 1–10; пусто — не оценивал.
+    quality: Mapped[int | None]
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 
 class Review(Base):

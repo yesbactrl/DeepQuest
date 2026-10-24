@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "./client";
+import type { SleepStats } from "./sleep";
 
 export type PeriodKind = "week" | "month";
 export type DayStatus = "met" | "missed" | "frozen" | "paused";
@@ -43,6 +44,8 @@ export interface DayPoint {
   focus_min: number;
   xp: number;
   status: DayStatus | null;
+  // Сон перед этим днём и днём, минуты; null — не записан.
+  sleep_min: number | null;
 }
 
 export interface DayGroup {
@@ -80,6 +83,9 @@ export interface Review {
   emotions: [string, number][];
   factors: [string, number][];
   top_tasks: { id: number; title: string; goal_id: number | null; xp: number }[];
+  sleep: SleepStats;
+  prev_sleep: SleepStats;
+  sleep_goal_min: number;
   analysis: ReviewAnalysis | null;
   analyzed_at: string | null;
 }

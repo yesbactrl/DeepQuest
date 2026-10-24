@@ -8,11 +8,22 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from deepquest.agent.schemas import DiaryAnalysis, DiarySphereNote, ReviewAnalysis
-from deepquest.db.models import Report, Review, Task, TaskStatus, TimeEntry, User, XpEvent, XpKind
-from deepquest.services import diary, goals, review, search, tasks
+from deepquest.db.models import (
+    Report,
+    Review,
+    SleepKind,
+    Task,
+    TaskStatus,
+    TimeEntry,
+    User,
+    XpEvent,
+    XpKind,
+)
+from deepquest.services import diary, goals, review, search, sleep, tasks
 from deepquest.services.days import season_of
 from deepquest.services.proofs import ProofStore
 from deepquest.services.review import PeriodKind, period_of
+from deepquest.services.sleep import SleepInput
 from deepquest.services.tasks import TaskFields
 from deepquest.services.users import get_or_create_user
 from deepquest.web.app import create_app
@@ -270,3 +281,24 @@ async def test_review_and_search_api(client: tuple[httpx.AsyncClient, FakeAgent]
 
     found = await http.get("/api/search", params={"q": "ничего"})
     assert found.json() == {"tasks": [], "entries": []}
+
+
+async def test_review_includes_sleep(
+    sessionmaker: async_sessionmaker[AsyncSession], user_id: int
+) -> None:
+    async with sessionmaker() as session:
+        user = await _user(session, user_id)
+        await sleep.add_session(
+            session,
+            user,
+            SleepInput(
+                SleepKind.NIGHT, datetime(2026, 10, 20, 0, 30), datetime(2026, 10, 20, 6, 0)
+            ),
+            THURSDAY,
+        )
+        result = await review.build_review(session, user, PeriodKind.WEEK, 0, THURSDAY)
+
+    assert result.sleep.days == 1 and result.sleep.avg_total_min == 330
+    assert [d.sleep_min for d in result.days] == [None, 330, None, None]
+    text = review.digest(result)
+    assert "## Сон (норма 8.0 ч" in text and "Отбой в среднем 00:30" in text

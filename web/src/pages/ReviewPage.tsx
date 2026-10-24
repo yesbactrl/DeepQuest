@@ -37,6 +37,7 @@ import { DAY_STATUS, chartTheme } from "../lib/chartTheme";
 import { SCALES, formatScore, scoreColor } from "../lib/diary";
 import { formatMinutes } from "../lib/format";
 import { goalIcon, useGoalColor } from "../lib/goalLook";
+import { hours as sleepHours } from "../lib/sleep";
 
 const PERIOD_NAME: Record<PeriodKind, { current: string; previous: string }> = {
   week: { current: "Эта неделя", previous: "прошлой недели" },
@@ -119,8 +120,9 @@ function Totals({ review }: { review: Review }) {
 }
 
 function StateTiles({ review }: { review: Review }) {
+  const sleep = review.sleep;
   return (
-    <SimpleGrid cols={{ base: 1, xs: 3 }}>
+    <SimpleGrid cols={{ base: 2, sm: 4 }}>
       {SCALES.map((scale) => {
         const now = review.state[scale.key];
         return (
@@ -144,6 +146,24 @@ function StateTiles({ review }: { review: Review }) {
           />
         );
       })}
+      <Tile
+        label="😴 Сон"
+        value={sleep.avg_total_min === null ? "—" : sleepHours(sleep.avg_total_min)}
+        delta={
+          sleep.avg_total_min === null ? (
+            <Text size="xs" c="dimmed">
+              не записан
+            </Text>
+          ) : (
+            <Group gap={6}>
+              <Delta now={sleep.avg_total_min} before={review.prev_sleep.avg_total_min} format={formatMinutes} />
+              <Text size="xs" c="dimmed">
+                выспался {sleep.goal_met} из {sleep.days}
+              </Text>
+            </Group>
+          )
+        }
+      />
     </SimpleGrid>
   );
 }
@@ -196,6 +216,15 @@ function DaysChart({ days, kind }: { days: DayPoint[]; kind: PeriodKind }) {
           })),
         },
         {
+          name: "Сон, ч",
+          type: "line",
+          connectNulls: true,
+          symbolSize: 5,
+          lineStyle: { type: "dashed" },
+          itemStyle: { color: theme.series(0) },
+          data: days.map((d) => (d.sleep_min === null ? null : Math.round((d.sleep_min / 60) * 10) / 10)),
+        },
+        {
           name: "Состояние",
           type: "line",
           yAxisIndex: 1,
@@ -214,7 +243,8 @@ function DaysChart({ days, kind }: { days: DayPoint[]; kind: PeriodKind }) {
         <EChart option={option} height={220} />
         <Text size="xs" c="dimmed">
           Цвет столбика — норма: зелёный выполнена, синий заморозка, красный пропуск, серый — день ещё
-          не закрыт или пауза. Линия — среднее настроения, энергии и желания из дневника.
+          не закрыт или пауза. Пунктир — сколько спал, сплошная линия — среднее настроения, энергии и
+          желания из дневника.
         </Text>
       </Stack>
     </Paper>
