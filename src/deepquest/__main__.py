@@ -27,6 +27,7 @@ from deepquest.bot.setup import bot_commands, build_dispatcher
 from deepquest.config import Settings
 from deepquest.db.migrate import upgrade_database
 from deepquest.db.session import create_engine, create_sessionmaker
+from deepquest.services.backup import run_backups
 from deepquest.services.proofs import ProofStore
 from deepquest.services.voice import WhisperTranscriber
 from deepquest.web.app import create_app
@@ -83,6 +84,10 @@ async def run(settings: Settings) -> None:
         loop.add_signal_handler(sig, stop.set)
 
     workers = [asyncio.create_task(_poll_bot(dispatcher, bot), name="bot")]
+    # Бэкап не входит в workers: его цикл бесконечен, при остановке задачу просто отменяем.
+    backups = asyncio.create_task(
+        run_backups(settings.database_path, settings.backups_dir), name="backups"
+    )
     server = None
     if settings.web_enabled:
         owner = settings.allowed_telegram_ids[0] if settings.allowed_telegram_ids else None
@@ -96,7 +101,13 @@ async def run(settings: Settings) -> None:
             transcriber,
         )
         server = _WebServer(
-            uvicorn.Config(app, host=settings.web_host, port=settings.web_port, log_level="info")
+            uvicorn.Config(
+                app,
+                host=settings.web_host,
+                port=settings.web_port,
+                log_level="info",
+                access_log=settings.access_log,
+            )
         )
         workers.append(asyncio.create_task(_serve_web(server), name="web"))
         logger.info("Веб: http://%s:%s", settings.web_host, settings.web_port)
@@ -108,6 +119,7 @@ async def run(settings: Settings) -> None:
         stopper.cancel()
     finally:
         logger.info("Останавливаюсь…")
+        backups.cancel()
         if warm_up is not None:
             warm_up.cancel()
         if server is not None:
@@ -136,8 +148,9 @@ def acquire_instance_lock(data_dir: Path, web_url: str) -> IO[str]:
         lock.close()
         running = f"DeepQuest уже запущен (PID {pid})" if pid else "DeepQuest уже запущен"
         sys.exit(
-            f"{running}: бот и веб {web_url} работают в другом окне.\n"
-            "Чтобы перезапустить, останови его там (Ctrl+C) и запусти снова."
+            f"{running}: бот и веб {web_url} уже работают.\n"
+            "Если он открыт в другом окне терминала — останови его там (Ctrl+C) и запусти снова.\n"
+            "Если он работает службой — перезапусти: uv run deepquest service restart"
         )
     lock.seek(0)
     lock.truncate()
@@ -147,6 +160,10 @@ def acquire_instance_lock(data_dir: Path, web_url: str) -> IO[str]:
 
 
 def main() -> None:
+    if sys.argv[1:2] == ["service"]:
+        from deepquest.service import main as service_main
+
+        sys.exit(service_main(sys.argv[2:]))
     try:
         settings = Settings()
     except ValidationError as exc:

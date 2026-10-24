@@ -50,6 +50,9 @@ class Settings(AgentSettings):
     web_host: str = "127.0.0.1"
     web_port: int = 8484
     web_dist_dir: Path = PROJECT_ROOT / "web" / "dist"
+    # Журнал каждого запроса к вебу. В службе (launchd) выключен: фронтенд опрашивает таймер
+    # каждые несколько секунд, и лог за день разрастался бы на мегабайты.
+    access_log: bool = True
 
     # Голосовой ввод: локальный Whisper. Модель (~1,5 ГБ) скачается при первом запуске.
     voice_enabled: bool = True
@@ -78,3 +81,7 @@ class Settings(AgentSettings):
     @property
     def models_dir(self) -> Path:
         return self.data_dir / "models"
+
+    @property
+    def backups_dir(self) -> Path:
+        return self.data_dir / "backups"

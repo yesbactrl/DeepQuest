@@ -16,6 +16,7 @@ def test_second_instance_stops_with_message(tmp_path: Path) -> None:
     message = str(stopped.value)
     assert message.startswith("DeepQuest уже запущен (PID ")
     assert "Ctrl+C" in message
+    assert "service restart" in message
     first.close()
     # Первый вышел — замок снят, можно запускаться снова.
     acquire_instance_lock(tmp_path, URL).close()

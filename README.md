@@ -25,7 +25,15 @@ Telegram-бот для личной прокачки: цели, задачи, т
 
 4. Напиши боту что угодно. Пока `ALLOWED_TELEGRAM_IDS` пуст, он ответит твоим telegram_id. Впиши id в `.env`, перезапусти бота и отправь `/start`.
 
-База лежит в `~/Library/Application Support/DeepQuest/deepquest.db`, миграции применяются сами при старте.
+База лежит в `~/Library/Application Support/DeepQuest/deepquest.db`, миграции применяются сами при старте. Раз в день рядом, в `backups/`, появляется копия базы; хранятся последние 14.
+
+Чтобы DeepQuest работал без открытого терминала, стартовал при входе в систему и поднимался сам после падения, поставь его службой macOS:
+
+```bash
+uv run deepquest service install
+```
+
+После обновления кода — `uv run deepquest service restart`. Посмотреть, жив ли, — `service status`, журнал — `service logs`, убрать службу — `service uninstall`.
 
 После онбординга любое сообщение боту — это новая задача: агент оформит карточку, а ты сохранишь её в бэклог (`/backlog`), поправишь или отменишь. Цели — `/goals`.
 
