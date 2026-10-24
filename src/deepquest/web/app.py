@@ -9,10 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from deepquest.agent.base import TaskAgent
+from deepquest.services.advisor import AdvisorJobs
 from deepquest.services.proofs import ProofStore, TelegramDownload
 from deepquest.services.voice import Transcriber
 from deepquest.web.deps import WebContext
 from deepquest.web.routes import (
+    advisor,
     character,
     dashboard,
     diary,
@@ -43,6 +45,7 @@ def create_app(
     proofs: ProofStore,
     telegram_download: TelegramDownload | None = None,
     transcriber: Transcriber | None = None,
+    advisor_jobs: AdvisorJobs | None = None,
 ) -> FastAPI:
     app = FastAPI(
         title="DeepQuest",
@@ -51,7 +54,7 @@ def create_app(
         redoc_url=None,
     )
     app.state.context = WebContext(
-        sessionmaker, owner_telegram_id, agent, proofs, telegram_download, transcriber
+        sessionmaker, owner_telegram_id, agent, proofs, telegram_download, transcriber, advisor_jobs
     )
     app.add_middleware(CsrfHeaderMiddleware)
     # Последним добавленный middleware срабатывает первым: Host проверяем раньше всего.
@@ -68,6 +71,7 @@ def create_app(
     app.include_router(search.router)
     app.include_router(review.router)
     app.include_router(sleep.router)
+    app.include_router(advisor.router)
 
     @app.api_route("/api/{path:path}", methods=["GET", "POST", "PATCH", "PUT", "DELETE"])
     async def unknown_api(path: str) -> None:

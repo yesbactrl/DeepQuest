@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from deepquest.agent.base import TaskAgent
 from deepquest.db.models import User
+from deepquest.services.advisor import AdvisorJobs
 from deepquest.services.proofs import ProofStore, TelegramDownload
 from deepquest.services.users import get_or_create_user
 from deepquest.services.voice import Transcriber
@@ -23,6 +24,8 @@ class WebContext:
     telegram_download: TelegramDownload | None = None
     # None — голосовой ввод выключен.
     transcriber: Transcriber | None = None
+    # None — советника нет (не найден Claude Code).
+    advisor: AdvisorJobs | None = None
 
 
 def get_context(request: Request) -> WebContext:

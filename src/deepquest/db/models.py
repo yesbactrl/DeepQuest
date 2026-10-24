@@ -389,6 +389,51 @@ class SleepSession(Base):
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 
+class AdvisorChat(Base):
+    """Разговор с советником. Контекст разговора хранит Claude Code (сессия `session_id`),
+    у нас — то, что нужно показать: сообщения и заголовок."""
+
+    __tablename__ = "advisor_chats"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(120))
+    # UUID сессии Claude Code: первое сообщение создаёт её, следующие продолжают (--resume).
+    session_id: Mapped[str] = mapped_column(String(36))
+    session_started: Mapped[bool] = mapped_column(default=False, server_default=false())
+    model: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class AdvisorMessage(Base):
+    __tablename__ = "advisor_messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    chat_id: Mapped[int] = mapped_column(
+        ForeignKey("advisor_chats.id", ondelete="CASCADE"), index=True
+    )
+    role: Mapped[str] = mapped_column(String(16))  # user / assistant
+    text: Mapped[str] = mapped_column(Text)
+    # Какие инструменты советник вызвал по пути к ответу: ["overview", "get_sleep"].
+    tools: Mapped[list[str]] = mapped_column(JSON, default=list)
+    # Ответа не получилось: текст ошибки; `text` — то, что успело прийти.
+    error: Mapped[str | None] = mapped_column(Text)
+    latency_ms: Mapped[int | None]
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class AdvisorNote(Base):
+    """Что советник запомнил о пользователе: подмешивается в каждый новый разговор."""
+
+    __tablename__ = "advisor_notes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    text: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
 class Review(Base):
     """Разбор периода агентом — недели или месяца. Цифры итогов считаются на лету, а текст
     разбора хранится: его не надо ждать заново. Повторный разбор перезаписывает прошлый."""

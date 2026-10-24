@@ -39,7 +39,9 @@ Telegram ⇄ long polling            Браузер на этом Mac ⇄ http:/
 **Советник (MCP).** Отдельный процесс `uv run deepquest mcp` (`mcp_server.py`, SDK `mcp` 2.x) — MCP-сервер на stdio поверх тех же сервисов и той же базы (WAL, `busy_timeout`: два процесса уживаются). Его запускает MCP-клиент — Claude Desktop, Claude Code, позже чат в вебе, — и сессии разговоров, их контекст и голос остаются на стороне клиента. Модель не получает всю базу, а подтягивает нужное инструментами:
 - чтение: `overview` (сейчас, уровень, норма, таймер, план на сегодня, последняя запись, сон, цели с id), `list_goals`, `list_tasks`, `get_task`, `get_plan`, `get_diary`, `get_sleep`, `get_review` (тот же текст, что уходит агенту итогов), `search`;
 - действия: `create_task` (сразу в бэклог, оценка и множитель приводятся к шкале, в исходной мысли метка `[советник]`), `schedule_task`, `add_diary_entry` (с разбором агентом и +15 XP), `log_sleep`.
-Удалять, закрывать задачи и начислять XP советник не может (решено 2026-10-24). Ответы — компактный текст, а не JSON: меньше контекста. Ошибки, понятные модели («задачи #99 нет», «пересекается с другим сном»), уходят ей текстом. Подключение к Claude Desktop — `mcpServers.deepquest` в `claude_desktop_config.json`: `uv run --directory <репозиторий> deepquest mcp` с `PATH`, где есть `uv` и `claude`.
+Удалять, закрывать задачи и начислять XP советник не может (решено 2026-10-24). Память: `remember` и `forget` пишут в `advisor_notes` устойчивое о пользователе (предпочтения, договорённости, до 60 заметок); память видна в `overview` и подмешивается в каждый разговор в вебе.
+
+**Советник в вебе.** Страница «Советник» — разговоры с Claude поверх того же MCP. Один ответ — один процесс `claude -p` (`agent/advisor.py`): `--session-id` у первого сообщения разговора и `--resume` у следующих (контекст хранит Claude Code, разговор = сессия), `--mcp-config` + `--strict-mcp-config` с `python -m deepquest mcp`, `--tools ""` (без файлов, терминала и интернета), `--allowedTools mcp__deepquest`, `--setting-sources ""`, `--include-partial-messages`. Системный промпт — `prompts/advisor.md`, время и память пользователя. Модель на разговор: Sonnet по умолчанию, Opus по выбору. Ответ — фоновая задача (`services/advisor.AdvisorJobs`), а не запрос: переживает уход со страницы и обновление вкладки; веб читает поток `GET /api/advisor/chats/{id}/stream` (SSE: снимок того, что уже написано, кусочки текста, вызовы инструментов, `done`), готовый ответ сохраняется в `advisor_messages` вместе со списком инструментов и ошибкой, если была. Замер 2026-10-24: ответ на «два свободных часа» с тремя инструментами — около 13 с на Sonnet. Ответы — компактный текст, а не JSON: меньше контекста. Ошибки, понятные модели («задачи #99 нет», «пересекается с другим сном»), уходят ей текстом. Подключение к Claude Desktop — `mcpServers.deepquest` в `claude_desktop_config.json`: `uv run --directory <репозиторий> deepquest mcp` с `PATH`, где есть `uv` и `claude`.
 
 ## 4. Модель данных
 
@@ -60,6 +62,9 @@ Telegram ⇄ long polling            Браузер на этом Mac ⇄ http:/
 | `diary_spheres` | что запись говорит про сферу жизни — цель верхнего уровня | `entry_id`, `goal_id`, `score` (1–10 или пусто), `good`, `bad`; unique(`entry_id`, `goal_id`) |
 | `voice_transcripts` | 5 последних расшифровок диктовок — страховка «Последние диктовки» | `text`, `created_at` |
 | `sleep_sessions` | отрезок сна: ночной или дневной | `kind` (`night` / `nap`), `started_at`, `ended_at` (UTC), `day` — местная дата пробуждения, `quality` (1–10 или пусто), `note`; норма — `users.sleep_goal_min` (по умолчанию 8 ч) |
+| `advisor_chats` | разговор с советником | `title` (первые слова вопроса), `session_id` (UUID сессии Claude Code), `session_started`, `model` |
+| `advisor_messages` | сообщения разговора | `role` (`user` / `assistant`), `text`, `tools` (JSON: какие инструменты вызвал), `error`, `latency_ms` |
+| `advisor_notes` | память советника | `text` |
 | `reviews` | разбор недели или месяца агентом; цифры итогов не хранятся, считаются на лету | `kind` (`week` / `month`), `first_day`, `data` (JSON ответа агента), `agent_call_id`; unique(`user_id`, `kind`, `first_day`) — повторный разбор перезаписывает |
 
 Во второй итерации добавятся `experiments`, `achievements` и `user_achievements`.
@@ -216,6 +221,7 @@ XP = round( min(факт_мин, 2 × оценка_мин) × value_mult × vali
 - `GET/POST /api/diary`, `PATCH/DELETE /api/diary/{id}`, `POST /api/diary/{id}/analyze` — дневник.
 - `GET /api/review?kind=week|month&offset=` — итоги периода (`offset` — сколько периодов назад); `POST /api/review/analyze` — разбор агентом.
 - `GET /api/search?q=` — поиск по задачам и дневнику.
+- `GET /api/advisor` — доступен ли советник и модели; `GET/POST /api/advisor/chats`, `GET/PATCH/DELETE /api/advisor/chats/{id}`, `POST /api/advisor/chats/{id}/messages` (202, ответ в фоне), `GET /api/advisor/chats/{id}/stream` (SSE); `GET/POST /api/advisor/notes`, `DELETE /api/advisor/notes/{id}`.
 - `GET /api/sleep?days=` — сон по дням и статистика; `POST /api/sleep`, `PATCH/DELETE /api/sleep/{id}`, `PATCH /api/sleep/goal` — норма.
 - `GET /api/voice` — включён ли голос; `POST /api/voice` (multipart: запись) — расшифровка; `GET /api/voice/history` — 5 последних расшифровок.
 

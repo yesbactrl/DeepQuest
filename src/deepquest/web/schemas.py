@@ -854,3 +854,60 @@ class SleepOut(BaseModel):
     goal_min: int
     days: list[SleepDayOut]
     stats: SleepStatsOut
+
+
+# Советник
+
+
+class AdvisorMessageOut(_FromAttrs):
+    id: int
+    role: str
+    text: str
+    tools: list[str]
+    error: str | None
+    latency_ms: int | None
+    created_at: datetime
+
+
+class AdvisorChatOut(_FromAttrs):
+    id: int
+    title: str
+    model: str
+    created_at: datetime
+    updated_at: datetime
+    # Ответ сейчас пишется: веб подписывается на поток.
+    running: bool = False
+
+
+class AdvisorChatDetailOut(AdvisorChatOut):
+    messages: list[AdvisorMessageOut]
+
+
+class AdvisorChatIn(BaseModel):
+    model: str | None = None
+
+
+class AdvisorChatEdit(BaseModel):
+    title: str | None = Field(default=None, max_length=120)
+    model: str | None = None
+
+
+class AdvisorMessageIn(BaseModel):
+    text: str = Field(min_length=1, max_length=8000)
+
+
+class AdvisorNoteOut(_FromAttrs):
+    id: int
+    text: str
+    created_at: datetime
+
+
+class AdvisorNoteIn(BaseModel):
+    text: str = Field(min_length=1, max_length=300)
+
+
+class AdvisorInfoOut(BaseModel):
+    # Советника нет, если не нашёлся Claude Code.
+    available: bool
+    models: dict[str, str]
+    default_model: str

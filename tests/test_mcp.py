@@ -114,3 +114,14 @@ async def test_server_lists_tools_and_turns_errors_into_text(
 
     ok = await server.call_tool("schedule_task", {"task_id": 1, "day": "2026-10-26"})
     assert not ok.is_error and "26.10 (пн)" in ok.content[0].text  # type: ignore[union-attr]
+
+
+async def test_memory_tools(advisor: tuple[Advisor, FakeAgent]) -> None:
+    a = advisor[0]
+    assert "Запомнил (#1): Лучше работается после 11" in await a.remember(
+        "Лучше работается после 11"
+    )
+    assert "- #1: Лучше работается после 11" in await a.overview()
+    assert await a.forget(1) == "Забыл заметку #1."
+    with pytest.raises(AdvisorError, match="#1"):
+        await a.forget(1)

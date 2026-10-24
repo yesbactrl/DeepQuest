@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from deepquest.agent.base import TaskAgent
 from deepquest.agent.schemas import VALUE_MULTIPLIERS, TaskDraft
 from deepquest.db.models import DiaryEntry, SleepKind, Task, TaskStatus, User
+from deepquest.services import advisor as memory
 from deepquest.services import (
     diary,
     goals,
@@ -58,7 +59,9 @@ INSTRUCTIONS = """DeepQuest — система личной прокачки п�
 Ты — советник пользователя. Начинай с `overview`, остальное подтягивай инструментами по мере
 надобности, не грузи всё сразу. Опирайся на данные, называй задачи и цифры. Перед действием,
 которое что-то меняет (create_task, schedule_task, add_diary_entry, log_sleep), коротко скажи,
-что сделаешь, если пользователь сам об этом прямо не попросил. Пиши по-русски, на «ты»."""
+что сделаешь, если пользователь сам об этом прямо не попросил. Устойчивое о пользователе
+(предпочтения, договорённости) сохраняй через remember; память видна в overview.
+Пиши по-русски, на «ты»."""
 
 STATUS = {
     TaskStatus.CLARIFYING: "вопрос агента",
@@ -227,6 +230,11 @@ class Advisor:
             for goal in await goals.list_goals(session, user):
                 lines.append(f"- {goal.id}: {goal.title}")
                 lines += [f"  - {d.id}: {d.title}" for d in goal.active_children]
+            notes = await memory.list_notes(session, user)
+            if notes:
+                lines.append("")
+                lines.append("Что ты помнишь о пользователе (remember / forget):")
+                lines += [f"- #{note.id}: {note.text}" for note in notes]
             return "\n".join(lines)
 
         return await self._run(work)
@@ -512,6 +520,24 @@ class Advisor:
 
         return await self._run(work)
 
+    async def remember(self, text: str) -> str:
+        async def work(session: AsyncSession, user: User, now: datetime) -> str:
+            try:
+                note = await memory.add_note(session, user, text)
+            except memory.AdvisorError as exc:
+                raise AdvisorError(str(exc)) from None
+            return f"Запомнил (#{note.id}): {note.text}"
+
+        return await self._run(work)
+
+    async def forget(self, note_id: int) -> str:
+        async def work(session: AsyncSession, user: User, now: datetime) -> str:
+            if not await memory.delete_note(session, user, note_id):
+                raise AdvisorError(f"Заметки #{note_id} нет.")
+            return f"Забыл заметку #{note_id}."
+
+        return await self._run(work)
+
     async def log_sleep(
         self,
         start: datetime,
@@ -650,6 +676,17 @@ def build_server(advisor: Advisor) -> MCPServer:
         """Записать сон. start и end — местное время пользователя (YYYY-MM-DDTHH:MM),
         kind — night (ночной) или nap (дневной), quality — 1–10, как выспался."""
         return await call(advisor.log_sleep(start, end, kind, quality, note))
+
+    @server.tool(annotations=WRITE)
+    async def remember(text: str) -> str:
+        """Запомнить о пользователе что-то устойчивое и полезное на будущее — одной фразой:
+        предпочтение, ограничение, договорённость. Память подмешивается в каждый разговор."""
+        return await call(advisor.remember(text))
+
+    @server.tool(annotations=WRITE)
+    async def forget(note_id: int) -> str:
+        """Забыть заметку из памяти по её номеру (#id), если она устарела или неверна."""
+        return await call(advisor.forget(note_id))
 
     return server
 

@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router";
 
 import { Layout } from "./components/Layout";
+import { AdvisorPage } from "./pages/AdvisorPage";
 import { CharacterPage } from "./pages/CharacterPage";
 import { LevelsPage } from "./pages/LevelsPage";
 import { PlanPage } from "./pages/PlanPage";
@@ -24,6 +25,7 @@ export function App() {
         <Route path="diary" element={<DiaryPage />} />
         <Route path="goals" element={<GoalsPage />} />
         <Route path="sleep" element={<SleepPage />} />
+        <Route path="advisor" element={<AdvisorPage />} />
         <Route path="review" element={<ReviewPage />} />
         <Route path="search" element={<SearchPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

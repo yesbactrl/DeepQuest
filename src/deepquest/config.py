@@ -13,7 +13,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 class AgentSettings(BaseSettings):
     """Настройки агента. Отдельно от бота, чтобы проверять промпты без токена Telegram."""
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    # .env — из корня репозитория, а не из текущей папки: советник запускает `deepquest mcp`
+    # из своей рабочей папки, и настройки должны найтись и там.
+    model_config = SettingsConfigDict(
+        env_file=PROJECT_ROOT / ".env", env_file_encoding="utf-8", extra="ignore"
+    )
 
     # subscription — через Claude Code по твоей подписке Pro/Max (только для личного бота);
     # api — платные запросы по ключу ANTHROPIC_API_KEY.

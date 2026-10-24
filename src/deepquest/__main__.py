@@ -21,12 +21,14 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from pydantic import ValidationError
 
-from deepquest.agent.setup import build_agent
+from deepquest.agent.advisor import ClaudeCodeChat
+from deepquest.agent.setup import build_agent, claude_code_config
 from deepquest.bot.proofs import telegram_download
 from deepquest.bot.setup import bot_commands, build_dispatcher
 from deepquest.config import Settings
 from deepquest.db.migrate import upgrade_database
 from deepquest.db.session import create_engine, create_sessionmaker
+from deepquest.services.advisor import AdvisorJobs
 from deepquest.services.backup import run_backups
 from deepquest.services.proofs import ProofStore
 from deepquest.services.voice import WhisperTranscriber
@@ -97,8 +99,17 @@ async def run(settings: Settings) -> None:
         run_backups(settings.database_path, settings.backups_dir), name="backups"
     )
     server = None
+    advisor_jobs = None
     if settings.web_enabled:
         owner = settings.allowed_telegram_ids[0] if settings.allowed_telegram_ids else None
+        if owner is not None and (cli := claude_code_config(settings)) is not None:
+            chat = ClaudeCodeChat(
+                cli.executable,
+                settings.agent_workdir / "advisor",
+                # Тот же Python и тот же пакет: сервер инструментов поднимается без uv.
+                [sys.executable, "-m", "deepquest", "mcp"],
+            )
+            advisor_jobs = AdvisorJobs(sessionmaker, owner, chat)
         app = create_app(
             sessionmaker,
             owner,
@@ -108,6 +119,7 @@ async def run(settings: Settings) -> None:
             # Без бота скриншоты, присланные когда-то в Telegram, веб не покажет.
             telegram_download(bot) if bot is not None else None,
             transcriber,
+            advisor_jobs,
         )
         server = _WebServer(
             uvicorn.Config(
@@ -129,6 +141,8 @@ async def run(settings: Settings) -> None:
     finally:
         logger.info("Останавливаюсь…")
         backups.cancel()
+        if advisor_jobs is not None:
+            await advisor_jobs.aclose()
         if warm_up is not None:
             warm_up.cancel()
         if server is not None:
