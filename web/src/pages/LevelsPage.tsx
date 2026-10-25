@@ -76,7 +76,7 @@ function Summary({ levels, character }: { levels: Levels; character: Character }
 function Rules({ levels }: { levels: Levels }) {
   const { rules } = levels;
   const rows: [string, ReactNode][] = [
-    ["Время", `${rules.xp_per_minute} XP за минуту; засчитывается не больше ${rules.cap_factor} оценок задачи`],
+    ["Время", `${rules.xp_per_minute} XP за минуту оценки задачи; таймер — для истории, на XP не влияет`],
     [
       "Ценность задачи",
       <Stack key="value" gap={0}>

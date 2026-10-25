@@ -55,7 +55,6 @@ export interface LevelStep {
 
 export interface XpRules {
   xp_per_minute: number;
-  cap_factor: number;
   value_mults: number[];
   validation_mults: Record<"accepted" | "partial" | "rejected", number>;
   // Без пруфа и со скрином или ссылкой.

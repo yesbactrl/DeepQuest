@@ -394,16 +394,8 @@ def running_since(started_local: datetime) -> str:
     return f"⏱ Таймер идёт с {started_local:%H:%M}"
 
 
-def timer_started(
-    task: Task,
-    started_local: datetime,
-    before_min: int,
-    paused: Task | None = None,
-    paused_min: int = 0,
-) -> str:
+def timer_started(task: Task, started_local: datetime, before_min: int) -> str:
     lines = []
-    if paused is not None:
-        lines += [f"⏸ «{escape(paused.title)}» на паузе, по ней {format_minutes(paused_min)}.", ""]
     since = f"Таймер идёт с {started_local:%H:%M}."
     if before_min:
         since += f" До этого по задаче: {format_minutes(before_min)}."
@@ -421,15 +413,12 @@ def timer_paused(task: Task, total_min: int) -> str:
 
 
 def ask_report(task: Task, total_min: int) -> str:
-    if total_min == 0 and task.estimate_min is not None:
-        # Таймер не обязателен: без него время засчитывается по оценке.
-        lines = [
-            f"✅ <b>{escape(task.title)}</b>: засчитаю по оценке — "
-            f"{format_minutes(task.estimate_min)}. Ушло иначе — поправишь время в вебе.",
-            "",
-        ]
-    else:
-        lines = [f"✅ <b>{escape(task.title)}</b>: {format_minutes(total_min)} по таймеру.", ""]
+    # XP — по оценке; время по таймеру только для истории.
+    line = f"✅ <b>{escape(task.title)}</b>: засчитаю по оценке — "
+    line += format_minutes(task.estimate_min or 0)
+    if total_min:
+        line += f" (по таймеру {format_minutes(total_min)})"
+    lines = [line + ". Ушло иначе — поправишь оценку в вебе.", ""]
     lines.append(
         "Что получилось? Напиши коротко: что сделал и что понял. Приложи пруф — скрин или "
         "ссылку, если есть — для истории, за это ×1.1. Не хочешь отчёт — "
@@ -483,11 +472,8 @@ def verdict_result(outcome: ValidationOutcome, *, disputed: bool = False) -> str
 def why(explanation: Explanation, task: Task) -> str:
     b = explanation.breakdown
     time_line = f"• Время: {format_minutes(b.counted_min)}"
-    if b.capped:
-        time_line += (
-            f" (по таймеру {format_minutes(b.actual_min)}, "
-            "но засчитываю не больше двух оценок задачи)"
-        )
+    if b.actual_min and b.actual_min != b.counted_min:
+        time_line += f" (по таймеру {format_minutes(b.actual_min)} — для истории)"
     value_reason = f" — {escape(task.mult_reason)}" if task.mult_reason else ""
     proof = "нет" if b.honor_mode else "есть, бонус за данные"
     lines = [

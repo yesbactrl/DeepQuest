@@ -23,7 +23,7 @@ const showError = (error: Error) => notifications.show({ color: "red", message: 
 function meta(task: Task): string {
   const parts = [];
   if (task.goal_path) parts.push(task.goal_path);
-  if (task.spent_min) parts.push(`потрачено ${formatMinutes(task.spent_min)}`);
+  if (task.spent_min) parts.push(`по таймеру ${formatMinutes(task.spent_min)}`);
   return parts.join(" · ");
 }
 
@@ -136,12 +136,7 @@ function Actions({ task, onOpen }: { task: Task; onOpen: (id: number) => void })
           loading={start.isPending}
           disabled={task.estimate_min === null}
           onClick={() =>
-            start.mutate(undefined, {
-              onSuccess: (result) =>
-                result.paused_task_id &&
-                notifications.show({ message: "Предыдущая задача встала на паузу", color: "gray" }),
-              onError: showError,
-            })
+            start.mutate(undefined, { onError: showError })
           }
         />
         {doneButton}

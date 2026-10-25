@@ -2,8 +2,12 @@
 
 Агент только выносит вердикт; сколько это в XP, решает формула здесь:
 
-    XP = round(min(факт_мин, 2 × оценка_мин)
-               × value_mult × validation_mult × proof_mult × weak_mult)
+    XP = round(оценка_мин × value_mult × validation_mult × proof_mult × weak_mult)
+
+Время по таймеру в XP не идёт (решено 2026-10-25): таймеров бывает несколько сразу, а
+между делом отвлекаешься. Засчитывается оценка — задача заняла больше или меньше, её
+правят вручную, и XP пересчитывается. До этого считалось min(таймер, 2 × оценка): в старых
+начислениях counted_min — как было тогда.
 
 weak_mult — ×1.2, если цель задачи сейчас самый слабый стат (services/character.py).
 """
@@ -19,8 +23,6 @@ from deepquest.db.models import Task, User, ValidationVerdict, XpEvent, XpKind
 from deepquest.services.days import season_of, user_logical_date
 
 XP_PER_MINUTE = 1
-# Больше двух оценок не засчитываем: защита от забытого таймера.
-CAP_FACTOR = 2
 VALIDATION_MULTS = {
     ValidationVerdict.ACCEPTED: 1.0,
     ValidationVerdict.PARTIAL: 0.7,
@@ -36,6 +38,7 @@ DIARY_ENTRY_XP = 15
 
 @dataclass(frozen=True)
 class XpBreakdown:
+    # По таймеру — для истории, на XP не влияет.
     actual_min: int
     estimate_min: int
     counted_min: int
@@ -47,10 +50,6 @@ class XpBreakdown:
     amount: int
     # В начислениях до появления статов этого поля нет: там бонуса не было.
     weak_mult: float = 1.0
-
-    @property
-    def capped(self) -> bool:
-        return self.counted_min < self.actual_min
 
     def to_json(self) -> dict[str, Any]:
         return asdict(self)
@@ -69,7 +68,7 @@ def compute_task_xp(
     honor_mode: bool,
     weak_mult: float = 1.0,
 ) -> XpBreakdown:
-    counted = min(actual_min, CAP_FACTOR * estimate_min)
+    counted = estimate_min
     validation_mult = VALIDATION_MULTS[verdict]
     proof_mult = NO_PROOF_MULT if honor_mode else PROOF_MULT
     amount = round(counted * XP_PER_MINUTE * value_mult * validation_mult * proof_mult * weak_mult)
@@ -169,3 +168,54 @@ async def diary_entry_xp(session: AsyncSession, entry_id: int) -> int:
         select(func.coalesce(func.sum(XpEvent.amount), 0)).where(XpEvent.diary_entry_id == entry_id)
     )
     return total or 0
+
+
+# Засчитанные минуты
+
+
+@dataclass(frozen=True)
+class Credit:
+    """Сколько минут засчитано за закрытую задачу и в какой день."""
+
+    task_id: int
+    goal_id: int | None
+    day: date
+    minutes: int
+
+
+async def credits(
+    session: AsyncSession, user: User, first: date | None = None, last: date | None = None
+) -> list[Credit]:
+    """Засчитанные минуты закрытых задач — на них, а не на таймер, смотрят норма, стрик,
+    графики и итоги (решено 2026-10-25). День — когда задачу закрыли (первое начисление),
+    минуты — из последнего начисления: поправка оценки задним числом меняет их, но не день.
+    Отклонённая задача — 0 минут."""
+    query = select(XpEvent.task_id, XpEvent.goal_id, XpEvent.logical_date).where(
+        XpEvent.user_id == user.id, XpEvent.kind == XpKind.TASK, XpEvent.task_id.is_not(None)
+    )
+    if first is not None:
+        query = query.where(XpEvent.logical_date >= first)
+    if last is not None:
+        query = query.where(XpEvent.logical_date <= last)
+    closed = list(await session.execute(query))
+    if not closed:
+        return []
+    latest_ids = (
+        select(func.max(XpEvent.id))
+        .where(XpEvent.task_id.in_([task_id for task_id, _, _ in closed]))
+        .group_by(XpEvent.task_id)
+    )
+    latest = dict(
+        (task_id, breakdown)
+        for task_id, breakdown in await session.execute(
+            select(XpEvent.task_id, XpEvent.breakdown).where(XpEvent.id.in_(latest_ids))
+        )
+    )
+    result = []
+    for task_id, goal_id, day in closed:
+        assert task_id is not None
+        breakdown = latest.get(task_id) or {}
+        rejected = breakdown.get("verdict") == ValidationVerdict.REJECTED.value
+        minutes = 0 if rejected else int(breakdown.get("counted_min", 0))
+        result.append(Credit(task_id, goal_id, day, minutes))
+    return result

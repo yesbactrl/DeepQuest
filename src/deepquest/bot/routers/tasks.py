@@ -277,7 +277,7 @@ async def open_requested(
         await callback.answer(texts.TASK_NOT_FOUND, show_alert=True)
         return
     status = None
-    entry = await timer.running_entry(session, user)
+    entry = await timer.running_entry(session, task)
     if task.status == TaskStatus.RUNNING and entry is not None:
         status = texts.running_since(local_time(user, entry.started_at))
     await show_in_place(callback, bot, texts.task_card(task, status), keyboards.task_card(task))

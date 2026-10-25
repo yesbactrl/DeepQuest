@@ -56,8 +56,8 @@ export function ReportForm({ task }: { task: TaskDetail }) {
   const report = useReport(task.id);
   // Черновик: отчёт переживает уход со страницы и обновление вкладки.
   const [text, setText] = useDraft(`report:${task.id}`);
-  // Таймер не обязателен: без него предлагаем оценку, и её можно поправить.
-  const [spent, setSpent] = useState<number | string>(task.spent_min || task.estimate_min || "");
+  // XP считается от оценки; заняло больше или меньше — правишь здесь. Таймер — для истории.
+  const [estimate, setEstimate] = useState<number | string>(task.estimate_min ?? "");
   const [files, setFiles] = useState<File[]>([]);
 
   function addFiles(added: File[]) {
@@ -75,7 +75,12 @@ export function ReportForm({ task }: { task: TaskDetail }) {
 
   function submit(selfCheck: boolean) {
     report.mutate(
-      { text, files, spentMin: typeof spent === "number" && spent >= 1 ? spent : null, selfCheck },
+      {
+        text,
+        files,
+        estimateMin: typeof estimate === "number" && estimate >= 1 && estimate !== task.estimate_min ? estimate : null,
+        selfCheck,
+      },
       {
         onSuccess: (result) => {
           // Отчёт сохранён на сервере (даже если агент недоступен) — черновик больше не нужен.
@@ -97,18 +102,17 @@ export function ReportForm({ task }: { task: TaskDetail }) {
   return (
     <Stack gap="sm">
       <NumberInput
-        label="Сколько ушло, минут"
+        label="Засчитать, минут"
         description={
-          task.spent_min
-            ? `По таймеру ${formatMinutes(task.spent_min)}. Ушло иначе — поправь.`
-            : "Таймер не запускался — подставил оценку. Ушло иначе — поправь."
+          (task.spent_min ? `По таймеру ${formatMinutes(task.spent_min)} — для истории, на XP не влияет. ` : "") +
+          "XP считается от оценки: заняло больше или меньше — поправь."
         }
         min={1}
         max={24 * 60}
         step={15}
         allowDecimal={false}
-        value={spent}
-        onChange={setSpent}
+        value={estimate}
+        onChange={setEstimate}
         disabled={report.isPending}
         w={{ base: "100%", sm: 320 }}
       />

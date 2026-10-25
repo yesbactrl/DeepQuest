@@ -334,7 +334,7 @@ async def list_days(
         by_day.setdefault(entry.logical_date, []).append(entry)
     if not by_day:
         return []
-    focus = await focus_by_day(session, user, min(by_day), max(by_day), now)
+    focus = await focus_by_day(session, user, min(by_day), max(by_day))
     xp_rows = await session.execute(
         select(XpEvent.logical_date, func.sum(XpEvent.amount))
         .where(XpEvent.user_id == user.id, XpEvent.logical_date.in_(list(by_day)))

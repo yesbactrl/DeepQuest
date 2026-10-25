@@ -17,7 +17,7 @@ from deepquest.bot.filters import TEXT_ANSWER
 from deepquest.bot.keyboards import TaskAction, TaskCb
 from deepquest.bot.proofs import extract_report, telegram_download
 from deepquest.bot.ui import edit_or_send, show_in_place
-from deepquest.db.models import Task, TaskStatus, User
+from deepquest.db.models import Task, TaskStatus, TimeEntry, User
 from deepquest.services import tasks, timer, validation
 from deepquest.services.days import local_time
 from deepquest.services.proofs import ProofStore
@@ -72,10 +72,7 @@ async def _start(
         await edit_or_send(bot, chat_id, None, texts.STALE_BUTTON)
         return
     before = await timer.total_minutes(session, task, result.entry.started_at)
-    paused_min = await timer.total_minutes(session, result.paused, at) if result.paused else 0
-    text = texts.timer_started(
-        task, local_time(user, result.entry.started_at), before, result.paused, paused_min
-    )
+    text = texts.timer_started(task, local_time(user, result.entry.started_at), before)
     await edit_or_send(bot, chat_id, message_id, text, keyboards.timer_running(task))
 
 
@@ -114,7 +111,7 @@ async def pause_requested(
         return
     now = _now()
     try:
-        await timer.pause(session, user, task, now)
+        await timer.pause(session, task, now)
     except TimerError:
         await callback.answer(texts.STALE_BUTTON)
         return
@@ -137,7 +134,7 @@ async def done_requested(
         return
     now = _now()
     try:
-        await timer.finish(session, user, task, now)
+        await timer.finish(session, task, now)
     except TimerError:
         await callback.answer(texts.STALE_BUTTON)
         return
@@ -145,8 +142,14 @@ async def done_requested(
     await _ask_report(bot, callback.from_user.id, _message_id(callback), state, session, task, now)
 
 
+async def _last_running(session: AsyncSession, user: User) -> TimeEntry | None:
+    """Таймеров может идти несколько: команды без задачи — про запущенный последним."""
+    entries = await timer.running_entries(session, user)
+    return entries[-1] if entries else None
+
+
 async def cmd_go(message: Message, session: AsyncSession, user: User) -> None:
-    entry = await timer.running_entry(session, user)
+    entry = await _last_running(session, user)
     task = await tasks.get_task(session, user, entry.task_id) if entry else None
     if entry is not None and task is not None:
         status = texts.running_since(local_time(user, entry.started_at))
@@ -164,12 +167,12 @@ async def cmd_go(message: Message, session: AsyncSession, user: User) -> None:
 
 
 async def cmd_pause(message: Message, session: AsyncSession, user: User) -> None:
-    entry = await timer.running_entry(session, user)
+    entry = await _last_running(session, user)
     task = await tasks.get_task(session, user, entry.task_id) if entry else None
     if task is None:
         await message.answer(texts.NO_TIMER)
         return
-    await timer.pause(session, user, task, message.date)
+    await timer.pause(session, task, message.date)
     total = await timer.total_minutes(session, task, message.date)
     await message.answer(texts.timer_paused(task, total), reply_markup=keyboards.timer_paused(task))
 
@@ -177,10 +180,10 @@ async def cmd_pause(message: Message, session: AsyncSession, user: User) -> None
 async def cmd_done(
     message: Message, bot: Bot, state: FSMContext, session: AsyncSession, user: User
 ) -> None:
-    entry = await timer.running_entry(session, user)
+    entry = await _last_running(session, user)
     task = await tasks.get_task(session, user, entry.task_id) if entry else None
     if task is not None:
-        await timer.finish(session, user, task, message.date)
+        await timer.finish(session, task, message.date)
     else:
         # Таймер не идёт, но отчёт по задаче ещё не сдан: просим его снова.
         task = await tasks.last_awaiting_report(session, user)

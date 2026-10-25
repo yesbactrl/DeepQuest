@@ -22,6 +22,10 @@ from deepquest.services.xp import XpBreakdown
 logger = logging.getLogger(__name__)
 
 SELF_CHECK_REASON = "Засчитано без проверки агентом."
+# Сколько можно засчитать задаче задним числом: оценка агента — до 8 часов, а на деле
+# задача могла растянуться на весь день.
+MIN_CREDITED_MIN = 1
+MAX_CREDITED_MIN = 24 * 60
 
 
 class ReportError(ValueError):
@@ -85,11 +89,10 @@ async def submit_report(
     report_input: ReportInput,
     images: list[ProofImage],
     now: datetime,
-    spent_min: int | None = None,
+    estimate_min: int | None = None,
 ) -> ValidationOutcome:
-    """`spent_min` — сколько ушло со слов пользователя. Не указано и таймер не запускали —
-    считаем, что ушло столько, сколько заложено в оценке."""
-    report = await _new_report(session, user, task, report_input, now, spent_min)
+    """`estimate_min` — сколько засчитать, если не по оценке: задача заняла больше или меньше."""
+    report = await _new_report(session, task, report_input, estimate_min)
     return await _check(session, agent, user, task, report, images, now)
 
 
@@ -99,11 +102,11 @@ async def accept_without_check(
     task: Task,
     report_input: ReportInput,
     now: datetime,
-    spent_min: int | None = None,
+    estimate_min: int | None = None,
 ) -> ValidationOutcome:
     """Засчитать задачу самому, без агента: вердикт «засчитано», XP по той же формуле.
     Пруф и тут бонус: со скрином или ссылкой ×1.1, без него ×1."""
-    report = await _new_report(session, user, task, report_input, now, spent_min)
+    report = await _new_report(session, task, report_input, estimate_min)
     validation = Validation(
         task_id=task.id,
         report_id=report.id,
@@ -119,24 +122,22 @@ async def accept_without_check(
     return await _award(session, user, task, report, validation, now)
 
 
+def _set_estimate(task: Task, minutes: int) -> None:
+    if not MIN_CREDITED_MIN <= minutes <= MAX_CREDITED_MIN:
+        raise ReportError(f"Estimate {minutes} is out of range")
+    task.estimate_min = minutes
+
+
 async def _new_report(
-    session: AsyncSession,
-    user: User,
-    task: Task,
-    report_input: ReportInput,
-    now: datetime,
-    spent_min: int | None,
+    session: AsyncSession, task: Task, report_input: ReportInput, estimate_min: int | None
 ) -> Report:
-    """Отчёт по задаче после «Готово». `spent_min` — сколько ушло со слов пользователя;
-    не указано и таймер не запускали — считаем, что ушло столько, сколько в оценке."""
+    """Отчёт по задаче после «Готово». `estimate_min` — поправка оценки: XP считается от неё."""
     if task.status != TaskStatus.AWAITING_REPORT:
         raise ReportError(f"Task {task.id} is {task.status}, not awaiting a report")
     if task.estimate_min is None or task.value_mult is None:
         raise ReportError(f"Task {task.id} has no estimate")
-    by_timer = await timer.total_minutes(session, task, now)
-    spent = spent_min if spent_min is not None else by_timer or task.estimate_min
-    if spent != by_timer:
-        await timer.set_total_minutes(session, user, task, spent, now)
+    if estimate_min is not None:
+        _set_estimate(task, estimate_min)
     report = Report(
         task_id=task.id,
         text=report_input.text,
@@ -178,16 +179,18 @@ async def _award(
     )
 
 
-async def change_time(
+async def change_estimate(
     session: AsyncSession, user: User, task: Task, minutes: int, now: datetime
 ) -> ValidationOutcome:
-    """Поправить, сколько ушло на задачу. У проверенной задачи XP пересчитывается тем же
-    вердиктом — поправкой в журнале, как при оспаривании; агента заново не спрашиваем."""
+    """Поправить оценку задним числом: сколько на самом деле стоит засчитать. У проверенной
+    задачи XP пересчитывается тем же вердиктом — поправкой в журнале, как при оспаривании;
+    агента заново не спрашиваем."""
     if task.status not in {TaskStatus.AWAITING_REPORT, TaskStatus.DONE, TaskStatus.REJECTED}:
-        raise ReportError(f"Task {task.id} is {task.status}: time is changed after «Готово»")
+        raise ReportError(f"Task {task.id} is {task.status}: estimate is changed in the card")
     if task.estimate_min is None or task.value_mult is None:
         raise ReportError(f"Task {task.id} has no estimate")
-    await timer.set_total_minutes(session, user, task, minutes, now)
+    _set_estimate(task, minutes)
+    await session.flush()
     validation = await latest_validation(session, task)
     report = await latest_report(session, task)
     if task.status == TaskStatus.AWAITING_REPORT or validation is None or report is None:

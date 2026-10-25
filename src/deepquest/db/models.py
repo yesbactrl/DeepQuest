@@ -183,13 +183,14 @@ class AgentCall(Base):
 
 
 class TimeEntry(Base):
-    """Отрезок работы по таймеру. Открытый отрезок (ended_at пуст) у пользователя один."""
+    """Отрезок работы по таймеру. Таймеров может идти несколько — по разным задачам,
+    у одной задачи открытый отрезок (ended_at пуст) один."""
 
     __tablename__ = "time_entries"
     __table_args__ = (
         Index(
-            "uq_time_entries_running",
-            "user_id",
+            "uq_time_entries_running_task",
+            "task_id",
             unique=True,
             sqlite_where=text("ended_at IS NULL"),
         ),
@@ -200,7 +201,8 @@ class TimeEntry(Base):
     task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), index=True)
     started_at: Mapped[datetime]
     ended_at: Mapped[datetime | None]
-    # manual — пауза, switched — запустили другую задачу, done — «Готово».
+    # manual — пауза, done — «Готово»; switched — из времён, когда таймер шёл один и
+    # запуск другой задачи ставил прошлую на паузу; logged — время, вписанное вручную.
     stop_reason: Mapped[str | None] = mapped_column(String(16))
 
 

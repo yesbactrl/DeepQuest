@@ -11,12 +11,13 @@ from datetime import date, datetime, timedelta
 from enum import StrEnum
 
 from pydantic import BaseModel, Field
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from deepquest.db.models import Goal, Task, TaskStatus, TimeEntry, User, XpEvent, XpKind
-from deepquest.services.days import split_by_day, user_day_bounds, user_logical_date
+from deepquest.db.models import Goal, Task, TaskStatus, User, XpEvent, XpKind
+from deepquest.services import xp
+from deepquest.services.days import user_logical_date
 from deepquest.services.goals import PALETTE
 
 
@@ -198,22 +199,9 @@ async def chart_data(
             values[key][index[_bucket_of(day, config.bucket)]] += amount
 
     if config.metric == Metric.MINUTES:
-        start, _ = user_day_bounds(user, first)
-        _, end = user_day_bounds(user, today)
-        rows = await session.execute(
-            select(Task.goal_id, TimeEntry.started_at, TimeEntry.ended_at)
-            .join(Task, Task.id == TimeEntry.task_id)
-            .where(
-                TimeEntry.user_id == user.id,
-                TimeEntry.started_at < end,
-                or_(TimeEntry.ended_at.is_(None), TimeEntry.ended_at > start),
-            )
-        )
-        for goal_id, started_at, ended_at in rows:
-            for day, seconds in split_by_day(
-                user, max(started_at, start), min(ended_at or now, end)
-            ):
-                add(day, goal_id, seconds / 60)
+        # Засчитанные минуты — в день, когда задачу закрыли; таймер не в счёт.
+        for credit in await xp.credits(session, user, first, today):
+            add(credit.day, credit.goal_id, credit.minutes)
     else:
         query = select(XpEvent.logical_date, XpEvent.goal_id, XpEvent.amount).where(
             XpEvent.user_id == user.id,

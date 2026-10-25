@@ -43,11 +43,11 @@ def test_logical_day_ends_at_boundary_hour() -> None:
     [
         (120, 120, 1.5, ValidationVerdict.ACCEPTED, True, 180),  # пример из спеки, без пруфа
         (120, 120, 1.5, ValidationVerdict.ACCEPTED, False, 198),  # с пруфом — ×1.1
-        (300, 60, 1.0, ValidationVerdict.ACCEPTED, False, 132),  # потолок — две оценки
+        (300, 60, 1.0, ValidationVerdict.ACCEPTED, False, 66),  # таймер не в счёт — оценка
         (60, 60, 1.0, ValidationVerdict.ACCEPTED, True, 60),  # без пруфа — ×1
         (60, 60, 1.5, ValidationVerdict.PARTIAL, False, 69),
         (60, 60, 2.0, ValidationVerdict.REJECTED, False, 0),
-        (0, 60, 1.5, ValidationVerdict.ACCEPTED, False, 0),
+        (0, 60, 1.5, ValidationVerdict.ACCEPTED, False, 99),  # без таймера — тоже оценка
     ],
 )
 def test_task_xp_formula(
@@ -57,7 +57,7 @@ def test_task_xp_formula(
         actual_min=actual, estimate_min=estimate, value_mult=mult, verdict=kind, honor_mode=honor
     )
     assert breakdown.amount == amount
-    assert breakdown.capped == (actual > 2 * estimate)
+    assert (breakdown.counted_min, breakdown.actual_min) == (estimate, actual)
 
 
 # Сервис таймера
@@ -93,7 +93,7 @@ async def seed(sessionmaker: async_sessionmaker[AsyncSession]) -> Seed:
         return Seed(user, first, second)
 
 
-async def test_timer_switches_and_counts_minutes(
+async def test_timers_run_in_parallel(
     sessionmaker: async_sessionmaker[AsyncSession], seed: Seed
 ) -> None:
     async with sessionmaker() as session:
@@ -103,17 +103,23 @@ async def test_timer_switches_and_counts_minutes(
         assert user and first and second
 
         await timer.start(session, user, first, T0)
-        result = await timer.start(session, user, second, T0 + timedelta(minutes=25))
-        assert result.paused is first
-        assert (first.status, second.status) == (TaskStatus.OPEN, TaskStatus.RUNNING)
+        await timer.start(session, user, second, T0 + timedelta(minutes=25))
+        # Второй таймер не останавливает первый.
+        assert (first.status, second.status) == (TaskStatus.RUNNING, TaskStatus.RUNNING)
+        assert [e.task_id for e in await timer.running_entries(session, user)] == [
+            first.id,
+            second.id,
+        ]
+        again = await timer.start(session, user, first, T0 + timedelta(minutes=30))
+        assert again.already_running
 
-        await timer.start(session, user, first, T0 + timedelta(minutes=40))
-        await timer.finish(session, user, first, T0 + timedelta(minutes=70))
+        await timer.pause(session, second, T0 + timedelta(minutes=40))
+        await timer.finish(session, first, T0 + timedelta(minutes=70))
 
-        assert await timer.total_minutes(session, first, T0 + timedelta(hours=5)) == 55
+        assert await timer.total_minutes(session, first, T0 + timedelta(hours=5)) == 70
         assert await timer.total_minutes(session, second, T0 + timedelta(hours=5)) == 15
-        assert first.status == TaskStatus.AWAITING_REPORT
-        assert await timer.running_entry(session, user) is None
+        assert (first.status, second.status) == (TaskStatus.AWAITING_REPORT, TaskStatus.OPEN)
+        assert await timer.running_entries(session, user) == []
 
 
 async def test_unestimated_task_cannot_start(
@@ -196,7 +202,7 @@ async def test_start_done_report_and_xp(
     await _rewind_timer(sessionmaker, 120)
 
     await harness.tap(ME, texts.DONE_BUTTON)
-    assert "2 ч по таймеру" in harness.last_text
+    assert "засчитаю по оценке — 2 ч (по таймеру 2 ч)" in harness.last_text
     await harness.send(ME, "Запустил кампанию на $20, вот кабинет: https://ads.tiktok.com/c/1")
 
     [report] = harness.agent.reports
@@ -250,8 +256,8 @@ async def test_report_without_proof_is_honor_mode(
     await harness.send(ME, "Сделал, но скрина нет")
 
     assert harness.agent.reports[0].honor_mode
-    # 60 мин × 1.5 × 1.0 × 1 — без пруфа XP не снижается.
-    assert harness.last_text.startswith("✅ Засчитано · +90 XP")
+    # 120 мин оценки × 1.5 × 1.0 × 1 — без пруфа XP не снижается, таймер (60 мин) не в счёт.
+    assert harness.last_text.startswith("✅ Засчитано · +180 XP")
 
 
 async def test_pause_resume_and_switch(
@@ -266,14 +272,18 @@ async def test_pause_resume_and_switch(
     await harness.tap(ME, texts.RESUME_BUTTON)
     assert "До этого по задаче: 30 мин" in harness.last_text
 
-    # Запуск второй задачи ставит первую на паузу.
+    # Вторая задача запускается рядом: первая не встаёт на паузу.
     await harness.send(ME, "/backlog")
     await harness.tap(ME, "2")
     await harness.tap(ME, texts.START_BUTTON)
-    assert "«Запустить кампанию в TikTok» на паузе" in harness.last_text
+    assert "на паузе" not in harness.last_text
     first = await _task(sessionmaker, seed.first.id)
     second = await _task(sessionmaker, seed.second.id)
-    assert (first.status, second.status) == (TaskStatus.OPEN, TaskStatus.RUNNING)
+    assert (first.status, second.status) == (TaskStatus.RUNNING, TaskStatus.RUNNING)
+    # Команда без задачи — про запущенный последним.
+    await harness.send(ME, "/pause")
+    assert "Записать рилс" in harness.last_text
+    assert (await _task(sessionmaker, seed.first.id)).status == TaskStatus.RUNNING
 
 
 async def test_commands_go_pause_done(
@@ -318,13 +328,11 @@ async def test_done_without_timer_counts_estimate(
     await harness.send(ME, "Запустил: https://ads.tiktok.com/c/1")
 
     # Таймер не запускали: 120 мин по оценке × 1.5 × 1.1 за ссылку.
-    assert harness.agent.reports[0].actual_min == 120
+    assert harness.agent.reports[0].actual_min == 0
     assert harness.last_text.startswith("✅ Засчитано · +198 XP")
     async with sessionmaker() as session:
-        [entry] = await session.scalars(select(TimeEntry))
-        # Время записано отрезком: его видят норма, стрик и графики.
-        assert entry.stop_reason == "logged"
-        assert entry.ended_at - entry.started_at == timedelta(minutes=120)
+        # Время по таймеру не выдумываем: отрезков нет.
+        assert list(await session.scalars(select(TimeEntry))) == []
 
 
 async def test_agent_down_then_recheck(
@@ -344,7 +352,8 @@ async def test_agent_down_then_recheck(
 
     # Скрин скачан заново из отчёта.
     assert len(harness.agent.reports[-1].images) == 1
-    assert harness.last_text.startswith("🟡 Засчитано частично · +69 XP")
+    # 120 мин оценки × 1.5 × 0.7 × 1.1
+    assert harness.last_text.startswith("🟡 Засчитано частично · +139 XP")
 
 
 async def test_dispute_once(sessionmaker: async_sessionmaker[AsyncSession], seed: Seed) -> None:
@@ -429,8 +438,8 @@ async def test_self_accept_in_bot(
     await harness.tap(ME, texts.SELF_ACCEPT_BUTTON)
 
     assert harness.agent.reports == []
-    # 60 мин × 1.5 × 1 × 1 (без пруфа)
-    assert harness.last_text.startswith("✅ Засчитано без проверки · +90 XP общий")
+    # 120 мин оценки × 1.5 × 1 × 1 (без пруфа)
+    assert harness.last_text.startswith("✅ Засчитано без проверки · +180 XP общий")
     assert texts.DISPUTE_BUTTON not in str(harness.screens[-1].reply_markup)
     assert (await _task(sessionmaker, seed.first.id)).status == TaskStatus.DONE
     # Отчёт после этого уже не ждём: обычный текст — снова новая мысль.

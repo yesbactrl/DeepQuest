@@ -6,7 +6,7 @@ import { useGoals } from "../../api/goals";
 import { ChartBody } from "./ChartBody";
 
 export const METRICS = [
-  { value: "minutes", label: "Время по таймеру" },
+  { value: "minutes", label: "Засчитанное время" },
   { value: "xp", label: "XP" },
   { value: "tasks", label: "Закрытые задачи" },
 ];

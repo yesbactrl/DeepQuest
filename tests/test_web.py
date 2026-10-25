@@ -156,13 +156,13 @@ async def test_goal_stats_include_directions(
 
     income_out, health_out = (await client.get("/api/goals")).json()
 
-    # Таймер ещё идёт: 60 + 20 минут.
-    assert income_out["stats"]["minutes"] == 80
-    # 80 мин × 1.5 × 1.1 за пруф
-    assert income_out["stats"]["xp"] == 132
+    # Время цели — засчитанные минуты (оценка 120), а не таймер (80 и ещё идёт).
+    assert income_out["stats"]["minutes"] == 120
+    # XP — от оценки, не от таймера: 120 мин × 1.5 × 1.1 за пруф
+    assert income_out["stats"]["xp"] == 198
     assert income_out["stats"]["done_tasks"] == 1
     assert income_out["stats"]["idle_days"] == 0
-    assert income_out["directions"][0]["stats"]["minutes"] == 80
+    assert income_out["directions"][0]["stats"]["minutes"] == 120
     assert health_out["stats"] == {
         "minutes": 0,
         "xp": 0,

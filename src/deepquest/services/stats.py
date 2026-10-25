@@ -1,4 +1,4 @@
-"""Статистика для веба: сколько времени и XP ушло на каждую цель и когда она двигалась."""
+"""Статистика для веба: сколько минут засчитано и XP на каждую цель и когда она двигалась."""
 
 from collections import defaultdict
 from dataclasses import dataclass
@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from deepquest.db.models import Goal, Task, TaskStatus, TimeEntry, User, XpEvent
+from deepquest.services import xp
 from deepquest.services.days import user_logical_date
 
 
@@ -23,7 +24,7 @@ class GoalStats:
 
 @dataclass
 class _Totals:
-    seconds: float = 0
+    minutes: int = 0
     xp: int = 0
     done_tasks: int = 0
     last_activity_at: datetime | None = None
@@ -33,7 +34,7 @@ class _Totals:
             self.last_activity_at = moment
 
     def add(self, other: _Totals) -> None:
-        self.seconds += other.seconds
+        self.minutes += other.minutes
         self.xp += other.xp
         self.done_tasks += other.done_tasks
         if other.last_activity_at is not None:
@@ -49,15 +50,10 @@ async def goal_stats(
     """
     totals: dict[int, _Totals] = defaultdict(_Totals)
 
-    entries = await session.execute(
-        select(Task.goal_id, TimeEntry.started_at, TimeEntry.ended_at)
-        .join(Task, Task.id == TimeEntry.task_id)
-        .where(TimeEntry.user_id == user.id, Task.goal_id.is_not(None))
-    )
-    for goal_id, started_at, ended_at in entries:
-        end = ended_at or now
-        totals[goal_id].seconds += max((end - started_at).total_seconds(), 0)
-        totals[goal_id].touch(end)
+    # Время цели — засчитанные минуты закрытых задач, не таймер.
+    for credit in await xp.credits(session, user):
+        if credit.goal_id is not None:
+            totals[credit.goal_id].minutes += credit.minutes
 
     xp_rows = await session.execute(
         select(XpEvent.goal_id, func.sum(XpEvent.amount), func.max(XpEvent.created_at))
@@ -86,7 +82,7 @@ async def goal_stats(
     def finish(goal: Goal, total: _Totals) -> GoalStats:
         since = total.last_activity_at or goal.created_at
         return GoalStats(
-            minutes=int(total.seconds // 60),
+            minutes=total.minutes,
             xp=total.xp,
             done_tasks=total.done_tasks,
             last_activity_at=total.last_activity_at,

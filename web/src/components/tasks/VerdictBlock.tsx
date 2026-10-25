@@ -16,17 +16,17 @@ import {
 import { notifications } from "@mantine/notifications";
 import { useState, type ReactNode } from "react";
 
-import { type TaskDetail, useChangeTime, useDispute } from "../../api/tasks";
+import { type TaskDetail, useChangeEstimate, useDispute } from "../../api/tasks";
 import { formatMinutes } from "../../lib/format";
 import { VERDICT, formatMult, xpSplit } from "../../lib/tasks";
 import { useDraft } from "../../lib/drafts";
 import { VoiceButton } from "../VoiceButton";
 
-// Сколько ушло на задачу: можно поправить, XP пересчитается тем же вердиктом.
-function TimeValue({ task, text }: { task: TaskDetail; text: string }) {
-  const change = useChangeTime(task.id);
+// Сколько засчитано (оценка): можно поправить, XP пересчитается тем же вердиктом.
+function EstimateValue({ task, text }: { task: TaskDetail; text: string }) {
+  const change = useChangeEstimate(task.id);
   const [editing, setEditing] = useState(false);
-  const [minutes, setMinutes] = useState<number | string>(task.spent_min);
+  const [minutes, setMinutes] = useState<number | string>(task.estimate_min ?? "");
   if (!editing) {
     return (
       <Group gap="xs" wrap="nowrap">
@@ -44,7 +44,7 @@ function TimeValue({ task, text }: { task: TaskDetail; text: string }) {
         setEditing(false);
         notifications.show({
           color: "teal",
-          message: `Время ${formatMinutes(minutes)} · ${xpSplit(result.xp_delta, result.stat, result.skill)}`,
+          message: `Засчитано ${formatMinutes(minutes)} · ${xpSplit(result.xp_delta, result.stat, result.skill)}`,
         });
       },
       onError: (error) => notifications.show({ color: "red", message: error.message }),
@@ -62,7 +62,7 @@ function TimeValue({ task, text }: { task: TaskDetail; text: string }) {
         suffix=" мин"
         value={minutes}
         onChange={setMinutes}
-        aria-label="Сколько ушло, минут"
+        aria-label="Сколько засчитать, минут"
         data-autofocus
       />
       <Button size="xs" loading={change.isPending} onClick={save}>
@@ -80,16 +80,12 @@ function Breakdown({ task }: { task: TaskDetail }) {
   if (!b) return null;
   const rows: [string, ReactNode][] = [
     [
-      "Время",
-      <TimeValue
-        key="time"
-        task={task}
-        text={
-          formatMinutes(b.counted_min) +
-          (b.capped ? ` (ушло ${formatMinutes(b.actual_min)}, засчитываю не больше двух оценок)` : "")
-        }
-      />,
+      "Засчитано",
+      <EstimateValue key="time" task={task} text={formatMinutes(b.counted_min)} />,
     ],
+    ...(b.actual_min
+      ? [["По таймеру", `${formatMinutes(b.actual_min)} — для истории, на XP не влияет`] as [string, ReactNode]]
+      : []),
     ["Ценность задачи", `${formatMult(b.value_mult)}${task.mult_reason ? ` — ${task.mult_reason}` : ""}`],
     [
       "Проверка отчёта",

@@ -91,7 +91,8 @@ async def _done_task(
             goal_id=goal_id,
             kind=XpKind.TASK,
             amount=xp,
-            breakdown={},
+            # Засчитано 60 минут — по ним фокус; отрезок таймера выше на него не влияет.
+            breakdown={"counted_min": 60, "verdict": "accepted"},
             logical_date=day,
             season=season_of(day),
         )

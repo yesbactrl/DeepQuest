@@ -254,12 +254,7 @@ function Actions({ task, onPlanned }: { task: TaskDetail; onPlanned: (o: PlanOut
       loading={start.isPending}
       disabled={!task.estimate_min}
       onClick={() =>
-        start.mutate(undefined, {
-          onSuccess: (result) =>
-            result.paused_task_id &&
-            notifications.show({ message: "Предыдущая задача встала на паузу", color: "gray" }),
-          onError: showError,
-        })
+        start.mutate(undefined, { onError: showError })
       }
     >
       {label}
@@ -356,7 +351,7 @@ function Body({ task, fetchedAt, onPlanned }: { task: TaskDetail; fetchedAt: num
 
       {(task.spent_min > 0 || task.xp !== 0) && task.status !== "running" && (
         <SimpleGrid cols={2}>
-          <StatItem label="Потрачено" value={formatMinutes(task.spent_min)} />
+          <StatItem label="По таймеру" value={task.spent_min ? formatMinutes(task.spent_min) : "—"} />
           <StatItem label="XP" value={task.xp} />
         </SimpleGrid>
       )}

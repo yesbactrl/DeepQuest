@@ -88,6 +88,34 @@ async def _entry(
     session.add(TimeEntry(user_id=user.id, task_id=task.id, started_at=start, ended_at=end))
 
 
+async def _closed(
+    session: AsyncSession,
+    user: User,
+    goal_id: int | None,
+    day: int,
+    minutes: int,
+    verdict: str = "accepted",
+) -> Task:
+    """Закрытая задача: первое начисление в `day`, засчитано `minutes` минут."""
+    task = await create_draft(
+        session, user, TaskFields("Закрыта", None, goal_id, minutes, 1.0, None), "т", None
+    )
+    logical = date(2026, 10, day)
+    session.add(
+        XpEvent(
+            user_id=user.id,
+            task_id=task.id,
+            goal_id=goal_id,
+            kind=XpKind.TASK,
+            amount=0,
+            breakdown={"counted_min": minutes, "verdict": verdict},
+            logical_date=logical,
+            season=season_of(logical),
+        )
+    )
+    return task
+
+
 @pytest.fixture
 async def seed(sessionmaker: async_sessionmaker[AsyncSession]) -> Seed:
     """Норма 60 мин, одна заморозка в неделю, живём по UTC с границей дня в 04:00."""
@@ -104,10 +132,15 @@ async def seed(sessionmaker: async_sessionmaker[AsyncSession]) -> Seed:
         gym = await create_draft(
             session, user, TaskFields("Зал", None, health.id, 60, 1.0, None), "т", None
         )
-        await _entry(session, user, work, at(17, 10), at(17, 11, 30))  # 17-е: 90 мин
-        await _entry(session, user, gym, at(21, 3, 30), at(21, 4, 30))  # 20-е: 30, 21-е: 30
-        await _entry(session, user, gym, at(21, 9), at(21, 10, 10))  # 21-е: ещё 70
-        await _entry(session, user, work, at(22, 11, 30), None)  # сегодня: таймер идёт 30 мин
+        # Засчитанные минуты закрытых задач — по дням закрытия.
+        await _closed(session, user, arbitrage.id, 17, 90)
+        await _closed(session, user, health.id, 20, 30)
+        await _closed(session, user, health.id, 21, 30)
+        await _closed(session, user, health.id, 21, 70)
+        await _closed(session, user, arbitrage.id, 22, 30)  # сегодня
+        # Таймер на норму не влияет: три часа по таймеру ничего не добавляют.
+        await _entry(session, user, work, at(22, 8), None)
+        await _entry(session, user, gym, at(21, 5), at(21, 8))
         await session.commit()
         return Seed(user.id, income.id, arbitrage.id, health.id)
 
@@ -139,19 +172,11 @@ async def test_close_days_with_weekly_freezes(
     assert [m.status for m in info.recent] == ["met", "frozen", "frozen", "missed", "met", "today"]
 
 
-async def _stop_timer(session: AsyncSession) -> None:
-    """Таймер из сида идёт с 22-го: останавливаем, чтобы пауза шла без работы."""
-    for entry in await session.scalars(select(TimeEntry).where(TimeEntry.ended_at.is_(None))):
-        entry.ended_at = NOW
-    await session.flush()
-
-
 async def test_pause_freezes_streak(
     sessionmaker: async_sessionmaker[AsyncSession], seed: Seed
 ) -> None:
     async with sessionmaker() as session:
         user = await _user(session, seed)
-        await _stop_timer(session)
         # Пауза 22-го: дни до неё закрываются как обычно, сегодняшний — уже нет.
         await streak.pause(session, user, NOW)
         later = NOW + timedelta(days=3)
@@ -181,7 +206,6 @@ async def test_after_pause_missed_day_still_breaks_streak(
 ) -> None:
     async with sessionmaker() as session:
         user = await _user(session, seed)
-        await _stop_timer(session)
         await streak.pause(session, user, NOW)
         resumed = NOW + timedelta(days=2)
         await streak.resume(session, user, resumed)
@@ -236,11 +260,41 @@ async def test_today_counts_once_norm_is_met(
     sessionmaker: async_sessionmaker[AsyncSession], seed: Seed
 ) -> None:
     async with sessionmaker() as session:
-        # Таймер сегодня идёт уже час: норма выполнена, стрик +1.
-        info = await streak.streak_info(
-            session, await _user(session, seed), NOW + timedelta(minutes=30)
-        )
+        user = await _user(session, seed)
+        before = await streak.streak_info(session, user, NOW)
+        # Закрыл ещё задачу на 30 минут: норма выполнена, стрик +1.
+        await _closed(session, user, seed.health, 22, 30)
+        await session.flush()
+        info = await streak.streak_info(session, user, NOW)
+    assert (before.today_focus_min, before.today_met, before.current) == (30, False, 1)
     assert (info.today_focus_min, info.today_met, info.current) == (60, True, 2)
+
+
+async def test_focus_counts_credited_minutes_not_timer(
+    sessionmaker: async_sessionmaker[AsyncSession], seed: Seed
+) -> None:
+    async with sessionmaker() as session:
+        user = await _user(session, seed)
+        # Отклонённая задача в норму не идёт.
+        await _closed(session, user, seed.health, 22, 120, verdict="rejected")
+        # Оценку поправили задним числом (поправка 23-го): минуты меняются, день — нет.
+        corrected = await _closed(session, user, seed.health, 22, 20)
+        session.add(
+            XpEvent(
+                user_id=user.id,
+                task_id=corrected.id,
+                goal_id=seed.health,
+                kind=XpKind.CORRECTION,
+                amount=0,
+                breakdown={"counted_min": 50, "verdict": "partial"},
+                logical_date=date(2026, 10, 23),
+                season="2026-10",
+            )
+        )
+        await session.flush()
+        focus = await streak.focus_by_day(session, user, NOW.date(), date(2026, 10, 23))
+    # 30 из сида + 50 после поправки; таймер, идущий с 8 утра, не в счёт.
+    assert focus == {NOW.date(): 80}
 
 
 # Графики
@@ -297,7 +351,8 @@ async def test_goal_filter_splits_by_direction_and_weeks(
         direct = await create_draft(
             session, user, TaskFields("Напрямую", None, seed.income, 60, 1.0, None), "т", None
         )
-        await _entry(session, user, direct, at(20, 10), at(20, 10, 45))
+        await _entry(session, user, direct, at(20, 10), at(20, 12))  # таймер не в счёт
+        await _closed(session, user, seed.income, 20, 45)
         config = ChartConfig(
             metric=Metric.MINUTES, bucket=Bucket.WEEK, period=Period.MONTH, goal_id=seed.income
         )

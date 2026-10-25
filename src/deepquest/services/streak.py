@@ -1,8 +1,9 @@
 """Норма, закрытие дней и стрик.
 
-- Минуты фокуса за день — отрезки таймера внутри логического дня (отрезок через
-  границу дня делится между днями). Время засчитывается, даже если отчёт потом отклонён:
-  норма про дисциплину, XP про результат.
+- Минуты фокуса за день — засчитанные минуты задач, закрытых в этот логический день
+  (`xp.credits`: оценка, поправленная пользователем, если задача заняла больше или
+  меньше). Таймер на норму не влияет (решено 2026-10-25): таймеров бывает несколько сразу,
+  а между делом отвлекаешься. Отклонённая задача в норму не идёт.
 - Закрытие дня пишет `day_stats` со снимком нормы. Закрываются все незакрытые дни
   до вчерашнего включительно: Mac мог спать неделю, а вызывать можно сколько угодно раз.
 - Заморозка спасает невыполненный день, если до него стрик был жив и на этой неделе
@@ -15,12 +16,13 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from deepquest.db.models import DayStats, DayStatus, TimeEntry, User
-from deepquest.services.days import split_by_day, user_day_bounds, user_logical_date
+from deepquest.db.models import DayStats, DayStatus, User
+from deepquest.services import xp
+from deepquest.services.days import user_logical_date
 
 RECENT_DAYS = 14
 _INSERT_CHUNK = 500
@@ -39,24 +41,13 @@ def _days(first: date, last: date) -> Iterable[date]:
 
 
 async def focus_by_day(
-    session: AsyncSession, user: User, first: date, last: date, now: datetime
+    session: AsyncSession, user: User, first: date, last: date
 ) -> dict[date, int]:
-    start, _ = user_day_bounds(user, first)
-    _, end = user_day_bounds(user, last)
-    entries = await session.execute(
-        select(TimeEntry.started_at, TimeEntry.ended_at).where(
-            TimeEntry.user_id == user.id,
-            TimeEntry.started_at < end,
-            or_(TimeEntry.ended_at.is_(None), TimeEntry.ended_at > start),
-        )
-    )
-    seconds: dict[date, float] = defaultdict(float)
-    for started_at, ended_at in entries:
-        clipped_start = max(started_at, start)
-        clipped_end = min(ended_at or now, end)
-        for day, piece in split_by_day(user, clipped_start, clipped_end):
-            seconds[day] += piece
-    return {day: int(total // 60) for day, total in seconds.items()}
+    """Засчитанные минуты по логическим дням за [first, last]."""
+    minutes: dict[date, int] = defaultdict(int)
+    for credit in await xp.credits(session, user, first, last):
+        minutes[credit.day] += credit.minutes
+    return dict(minutes)
 
 
 async def close_days(session: AsyncSession, user: User, now: datetime) -> None:
@@ -84,7 +75,7 @@ async def close_days(session: AsyncSession, user: User, now: datetime) -> None:
     if first > yesterday:
         return
 
-    focus = await focus_by_day(session, user, first, yesterday, now)
+    focus = await focus_by_day(session, user, first, yesterday)
     # Заморозки, уже потраченные на неделе первого закрываемого дня.
     week_start = first - timedelta(days=first.weekday())
     frozen: dict[tuple[int, int], int] = defaultdict(int)
@@ -145,7 +136,7 @@ async def resume(session: AsyncSession, user: User, now: datetime) -> None:
     first = user_logical_date(user, user.streak_paused_at)
     yesterday = user_logical_date(user, now) - timedelta(days=1)
     if first <= yesterday:
-        focus = await focus_by_day(session, user, first, yesterday, now)
+        focus = await focus_by_day(session, user, first, yesterday)
         rows = [
             {
                 "user_id": user.id,
@@ -201,7 +192,7 @@ async def streak_info(session: AsyncSession, user: User, now: datetime) -> Strea
             select(DayStats).where(DayStats.user_id == user.id).order_by(DayStats.logical_date)
         )
     )
-    today_focus = (await focus_by_day(session, user, today, today, now)).get(today, 0)
+    today_focus = (await focus_by_day(session, user, today, today)).get(today, 0)
     today_met = today_focus >= user.daily_norm_min
 
     best = run = 0

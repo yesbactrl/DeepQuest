@@ -271,7 +271,7 @@ async def stats(
         states[entry.logical_date] += [
             v for v in (entry.mood, entry.energy, entry.drive) if v is not None
         ]
-    focus = await focus_by_day(session, user, first, last, now)
+    focus = await focus_by_day(session, user, first, last)
 
     def group(selected: list[DaySleep]) -> SleepGroup:
         return SleepGroup(

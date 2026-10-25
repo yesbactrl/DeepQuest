@@ -177,8 +177,7 @@ class Advisor:
                     f"Норма {_h(info.norm_min)} в день, сегодня фокуса {_h(info.today_focus_min)}; "
                     f"стрик {info.current} дн."
                 )
-            running = await timer.running_entry(session, user)
-            if running is not None:
+            for running in await timer.running_entries(session, user):
                 task = await tasks.get_task(session, user, running.task_id)
                 if task is not None:
                     lines.append(f"Идёт таймер: #{task.id} «{task.title}».")

@@ -1,8 +1,8 @@
 """Итоги периода — недели (пн–вс) или месяца — по логическим дням пользователя.
 
-Цифры считаются на лету из журнала XP, таймера и дневника. Сравниваем с тем же отрезком
-прошлого периода: если неделя идёт третий день, то с первыми тремя днями прошлой недели,
-иначе незаконченная неделя всегда проигрывала бы законченной.
+Цифры считаются на лету из журнала XP (там же засчитанные минуты) и дневника.
+Сравниваем с тем же отрезком прошлого периода: если неделя идёт третий день, то с первыми
+тремя днями прошлой недели, иначе незаконченная неделя всегда проигрывала бы законченной.
 
 Плохие и хорошие дни — по среднему состоянию дня (настроение, энергия и желание вместе):
 ниже BAD_BELOW — плохой, от GOOD_FROM — хороший. Для них видно, сколько было работы и какие
@@ -19,7 +19,7 @@ from datetime import date, datetime, timedelta
 from enum import StrEnum
 from statistics import mean
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from deepquest.agent.base import AgentError, TaskAgent
@@ -33,15 +33,15 @@ from deepquest.db.models import (
     Review,
     Task,
     TaskStatus,
-    TimeEntry,
     User,
     XpEvent,
     XpKind,
 )
 from deepquest.services import goals as goals_service
 from deepquest.services import sleep as sleep_service
+from deepquest.services import xp
 from deepquest.services.agent_log import record_calls
-from deepquest.services.days import split_by_day, user_day_bounds, user_logical_date
+from deepquest.services.days import user_logical_date
 from deepquest.services.diary import MONTHS, PARTS_OF_DAY
 from deepquest.services.planning import goal_context
 from deepquest.services.sleep import SleepStats
@@ -213,26 +213,14 @@ async def _roots(session: AsyncSession, user: User) -> dict[int, int]:
 
 
 async def _minutes(
-    session: AsyncSession, user: User, first: date, last: date, now: datetime
+    session: AsyncSession, user: User, first: date, last: date
 ) -> tuple[dict[date, float], dict[int | None, float]]:
-    """Минуты таймера по дням и по целям задач за [first, last]."""
-    start, _ = user_day_bounds(user, first)
-    _, end = user_day_bounds(user, last)
-    rows = await session.execute(
-        select(Task.goal_id, TimeEntry.started_at, TimeEntry.ended_at)
-        .join(Task, Task.id == TimeEntry.task_id)
-        .where(
-            TimeEntry.user_id == user.id,
-            TimeEntry.started_at < end,
-            or_(TimeEntry.ended_at.is_(None), TimeEntry.ended_at > start),
-        )
-    )
+    """Засчитанные минуты закрытых задач по дням и по целям за [first, last]."""
     by_day: dict[date, float] = defaultdict(float)
     by_goal: dict[int | None, float] = defaultdict(float)
-    for goal_id, started_at, ended_at in rows:
-        for day, seconds in split_by_day(user, max(started_at, start), min(ended_at or now, end)):
-            by_day[day] += seconds / 60
-            by_goal[goal_id] += seconds / 60
+    for credit in await xp.credits(session, user, first, last):
+        by_day[credit.day] += credit.minutes
+        by_goal[credit.goal_id] += credit.minutes
     return by_day, by_goal
 
 
@@ -292,7 +280,7 @@ async def _window(
         )
     )
     done = [(task_id, goal_id) for task_id, goal_id in done_rows]
-    minutes_by_day, minutes_by_goal = await _minutes(session, user, first, last, now)
+    minutes_by_day, minutes_by_goal = await _minutes(session, user, first, last)
     entries = list(
         await session.scalars(
             select(DiaryEntry)
@@ -530,7 +518,7 @@ def digest(review: PeriodReview) -> str:
     lines = [
         "## Работа (в скобках — тот же отрезок прошлого периода)",
         f"- XP: {_vs(t.xp, p.xp)}",
-        f"- Фокус по таймеру: {_hours(t.minutes)} (было {_hours(p.minutes)})",
+        f"- Фокус (засчитано по задачам): {_hours(t.minutes)} (было {_hours(p.minutes)})",
         f"- Закрыто задач: {_vs(t.done_tasks, p.done_tasks)}",
         f"- Норма выполнена: {t.norm_met} из {t.norm_days} закрытых дней",
         f"- Записей в дневнике: {_vs(t.entries, p.entries)}",

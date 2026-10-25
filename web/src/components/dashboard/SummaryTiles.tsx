@@ -195,7 +195,7 @@ export function SummaryTiles({ summary }: { summary: Summary | undefined }) {
         <PausedTile summary={summary} />
       ) : (
         <>
-          <Tile label="Сегодня">
+          <Tile label="Засчитано сегодня">
             <Group gap="xs" align="center">
               <Big>{formatMinutes(streak.today_focus_min)}</Big>
               {streak.today_met && (

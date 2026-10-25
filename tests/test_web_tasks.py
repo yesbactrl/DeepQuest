@@ -173,24 +173,26 @@ async def test_manual_edit_is_validated(web: Web, change: dict, message: str) ->
 # Таймер, отчёт, вердикт
 
 
-async def test_timer_switches_tasks(
+async def test_timers_run_in_parallel(
     web: Web, sessionmaker: async_sessionmaker[AsyncSession]
 ) -> None:
     first = await _open_task(web, "Первая")
     second = await _open_task(web, "Вторая")
 
     started = (await web.client.post(f"/api/tasks/{first['id']}/start")).json()
-    assert started["task"]["running_since"] is not None
-    timer = (await web.client.get("/api/timer")).json()
+    assert started["running_since"] is not None
+    [timer] = (await web.client.get("/api/timers")).json()
     assert (timer["task_id"], timer["title"], timer["before_min"]) == (first["id"], "Первая", 0)
 
-    switched = (await web.client.post(f"/api/tasks/{second['id']}/start")).json()
-    assert switched["paused_task_id"] == first["id"]
-    assert (await web.client.get(f"/api/tasks/{first['id']}")).json()["status"] == "open"
+    await web.client.post(f"/api/tasks/{second['id']}/start")
+    timers = (await web.client.get("/api/timers")).json()
+    assert [t["task_id"] for t in timers] == [first["id"], second["id"]]
+    assert (await web.client.get(f"/api/tasks/{first['id']}")).json()["status"] == "running"
 
     paused = (await web.client.post(f"/api/tasks/{second['id']}/pause")).json()
     assert (paused["status"], paused["running_since"]) == ("open", None)
-    assert (await web.client.get("/api/timer")).json() is None
+    await web.client.post(f"/api/tasks/{first['id']}/pause")
+    assert (await web.client.get("/api/timers")).json() == []
 
 
 async def test_report_with_screenshot(
@@ -352,35 +354,38 @@ async def test_report_without_timer_counts_estimate(
         await web.client.post(f"/api/tasks/{task['id']}/report", data={"text": "https://x.io"})
     ).json()
 
-    assert web.agent.reports[0].actual_min == 60
+    assert web.agent.reports[0].actual_min == 0
     # 60 по оценке × 1.5 × 1.1 за ссылку
     assert result["xp_delta"] == 99
-    assert await _entries(sessionmaker) == [(60, "logged")]
+    # Время по таймеру не выдумываем.
+    assert await _entries(sessionmaker) == []
 
 
-async def test_report_with_spent_time(
+async def test_report_with_corrected_estimate(
     web: Web, sessionmaker: async_sessionmaker[AsyncSession]
 ) -> None:
     task = await _open_task(web, minutes=60, mult=1.0)
     web.agent.validations.append(verdict())
     await web.client.post(f"/api/tasks/{task['id']}/start")
-    await _rewind(sessionmaker, 30)
+    await _rewind(sessionmaker, 150)
     await web.client.post(f"/api/tasks/{task['id']}/done")
 
-    # По таймеру 30 минут, а на деле ушло 45: дописываем недостающие 15.
+    # По таймеру 2.5 часа (работал параллельно), засчитать — 45 минут.
     result = (
         await web.client.post(
-            f"/api/tasks/{task['id']}/report", data={"text": "https://x.io", "spent_min": "45"}
+            f"/api/tasks/{task['id']}/report", data={"text": "https://x.io", "estimate_min": "45"}
         )
     ).json()
 
-    assert web.agent.reports[0].actual_min == 45
-    # 45 × 1.1 за ссылку
+    assert web.agent.reports[0].actual_min == 150
+    # 45 × 1.1 за ссылку; таймер записан как был.
     assert result["xp_delta"] == 50
-    assert await _entries(sessionmaker) == [(30, "done"), (15, "logged")]
+    assert result["task"]["estimate_min"] == 45
+    assert result["task"]["breakdown"]["actual_min"] == 150
+    assert await _entries(sessionmaker) == [(150, "done")]
 
 
-async def test_change_time_recounts_xp(
+async def test_change_estimate_recounts_xp(
     web: Web, sessionmaker: async_sessionmaker[AsyncSession]
 ) -> None:
     task = await _open_task(web, minutes=60, mult=1.0)
@@ -389,26 +394,24 @@ async def test_change_time_recounts_xp(
     await web.client.post(f"/api/tasks/{task['id']}/report", data={"text": "Сделал"})
     # 60 мин × 0.7 = 42
 
-    more = (await web.client.post(f"/api/tasks/{task['id']}/time", json={"spent_min": 90})).json()
-    # 90 × 0.7 = 63: поправка +21, агента заново не спрашиваем.
-    assert (more["xp_delta"], more["task"]["xp"], more["task"]["spent_min"]) == (21, 63, 90)
-    assert more["task"]["breakdown"]["actual_min"] == 90
+    url = f"/api/tasks/{task['id']}/estimate"
+    more = (await web.client.post(url, json={"estimate_min": 600})).json()
+    # 600 × 0.7 = 420: поправка +378, агента заново не спрашиваем. Больше 8 часов — можно.
+    assert (more["xp_delta"], more["task"]["xp"], more["task"]["estimate_min"]) == (378, 420, 600)
+    assert more["task"]["spent_min"] == 0
     assert len(web.agent.reports) == 1
 
-    less = (await web.client.post(f"/api/tasks/{task['id']}/time", json={"spent_min": 20})).json()
-    assert (less["xp_delta"], less["task"]["xp"]) == (-49, 14)
-    assert await _entries(sessionmaker) == [(20, "logged")]
+    less = (await web.client.post(url, json={"estimate_min": 20})).json()
+    assert (less["xp_delta"], less["task"]["xp"]) == (-406, 14)
 
 
-async def test_change_time_needs_done_task(web: Web) -> None:
+async def test_change_estimate_needs_done_task(web: Web) -> None:
     task = await _open_task(web)
-    response = await web.client.post(f"/api/tasks/{task['id']}/time", json={"spent_min": 30})
-    assert response.status_code == 409
+    url = f"/api/tasks/{task['id']}/estimate"
+    assert (await web.client.post(url, json={"estimate_min": 30})).status_code == 409
     await web.client.post(f"/api/tasks/{task['id']}/start")
-    response = await web.client.post(f"/api/tasks/{task['id']}/time", json={"spent_min": 30})
-    assert response.status_code == 409
-    bad = await web.client.post(f"/api/tasks/{task['id']}/time", json={"spent_min": 0})
-    assert bad.status_code == 422
+    assert (await web.client.post(url, json={"estimate_min": 30})).status_code == 409
+    assert (await web.client.post(url, json={"estimate_min": 0})).status_code == 422
 
 
 # Без агента

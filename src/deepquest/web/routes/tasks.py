@@ -26,17 +26,16 @@ from deepquest.web.schemas import (
     CheckOut,
     ClarifyIn,
     DisputeIn,
+    EstimateIn,
     PlanIn,
     PlanOutcomeOut,
     ProofOut,
     ReportOut,
     ReviseIn,
     ReviseOut,
-    StartOut,
     TaskDetailOut,
     TaskEdit,
     TaskOut,
-    TimeIn,
     TimerOut,
     ValidationOut,
     XpBreakdownOut,
@@ -101,7 +100,6 @@ async def _detail(session: AsyncSession, task: Task) -> TaskDetailOut:
             actual_min=b.actual_min,
             estimate_min=b.estimate_min,
             counted_min=b.counted_min,
-            capped=b.capped,
             value_mult=b.value_mult,
             verdict=b.verdict,
             validation_mult=b.validation_mult,
@@ -290,41 +288,42 @@ async def cancel(task_id: int, session: SessionDep, user: UserDep) -> TaskDetail
 # Таймер
 
 
-@router.get("/timer")
-async def running_timer(session: SessionDep, user: UserDep) -> TimerOut | None:
-    entry = await timer.running_entry(session, user)
-    if entry is None:
-        return None
-    task = await _task(session, user, entry.task_id)
-    return TimerOut(
-        task_id=task.id,
-        title=task.title,
-        goal_path=goals.goal_path(task.goal) if task.goal else None,
-        started_at=entry.started_at,
-        before_min=await timer.total_minutes(session, task, entry.started_at),
-    )
+@router.get("/timers")
+async def running_timers(session: SessionDep, user: UserDep) -> list[TimerOut]:
+    """Идущие таймеры — их может быть несколько, первым запущенный раньше всех."""
+    result = []
+    for entry in await timer.running_entries(session, user):
+        task = await _task(session, user, entry.task_id)
+        result.append(
+            TimerOut(
+                task_id=task.id,
+                title=task.title,
+                goal_path=goals.goal_path(task.goal) if task.goal else None,
+                started_at=entry.started_at,
+                before_min=await timer.total_minutes(session, task, entry.started_at),
+            )
+        )
+    return result
 
 
 @router.post("/tasks/{task_id}/start")
-async def start(task_id: int, session: SessionDep, user: UserDep) -> StartOut:
+async def start(task_id: int, session: SessionDep, user: UserDep) -> TaskDetailOut:
+    """Запустить таймер. Другие идущие таймеры не останавливаются."""
     task = await _task(session, user, task_id)
     if not task.is_estimated:
         raise _conflict(NOT_ESTIMATED)
     try:
-        result = await timer.start(session, user, task, _now())
+        await timer.start(session, user, task, _now())
     except TimerError:
         raise _conflict("Запустить таймер можно только у задачи из бэклога.") from None
-    return StartOut(
-        task=await _detail(session, task),
-        paused_task_id=result.paused.id if result.paused else None,
-    )
+    return await _detail(session, task)
 
 
 @router.post("/tasks/{task_id}/pause")
 async def pause(task_id: int, session: SessionDep, user: UserDep) -> TaskDetailOut:
     task = await _task(session, user, task_id)
     try:
-        await timer.pause(session, user, task, _now())
+        await timer.pause(session, task, _now())
     except TimerError:
         raise _conflict("Таймер по этой задаче не идёт.") from None
     return await _detail(session, task)
@@ -336,7 +335,7 @@ async def done(task_id: int, session: SessionDep, user: UserDep) -> TaskDetailOu
     if not task.is_estimated:
         raise _conflict(NOT_ESTIMATED)
     try:
-        await timer.finish(session, user, task, _now())
+        await timer.finish(session, task, _now())
     except TimerError:
         raise _conflict("Закончить можно задачу из бэклога или с идущим таймером.") from None
     return await _detail(session, task)
@@ -353,8 +352,10 @@ async def report(
     context: ContextDep,
     text: Annotated[str, Form()] = "",
     files: Annotated[list[UploadFile] | None, File()] = None,
-    # Сколько ушло на задачу; не указано — по таймеру, а без таймера — по оценке.
-    spent_min: Annotated[int | None, Form(ge=1, le=24 * 60)] = None,
+    # Сколько засчитать, если не по оценке: XP считается от оценки, таймер — для истории.
+    estimate_min: Annotated[
+        int | None, Form(ge=validation.MIN_CREDITED_MIN, le=validation.MAX_CREDITED_MIN)
+    ] = None,
     # Засчитать самому, без агента: тогда отчёт можно не писать. По умолчанию False:
     # отсутствующее булево поле формы FastAPI читает как False, как невыбранный чекбокс.
     self_check: Annotated[bool, Form()] = False,
@@ -388,11 +389,11 @@ async def report(
         if not self_check:
             images = await context.proofs.images(saved, context.telegram_download)
             outcome = await validation.submit_report(
-                session, context.agent, user, task, report_input, images, _now(), spent_min
+                session, context.agent, user, task, report_input, images, _now(), estimate_min
             )
         else:
             outcome = await validation.accept_without_check(
-                session, user, task, report_input, _now(), spent_min
+                session, user, task, report_input, _now(), estimate_min
             )
     except ReportError:
         raise _conflict() from None
@@ -430,13 +431,16 @@ async def dispute(
     return await _check_out(session, user, outcome)
 
 
-@router.post("/tasks/{task_id}/time")
-async def change_time(task_id: int, body: TimeIn, session: SessionDep, user: UserDep) -> CheckOut:
+@router.post("/tasks/{task_id}/estimate")
+async def change_estimate(
+    task_id: int, body: EstimateIn, session: SessionDep, user: UserDep
+) -> CheckOut:
+    """Оценка задним числом — после «Готово»; у проверенной задачи XP пересчитывается."""
     task = await _task(session, user, task_id)
     try:
-        outcome = await validation.change_time(session, user, task, body.spent_min, _now())
-    except ReportError, TimerError:
-        raise _conflict("Время правится после «Готово», когда таймер остановлен.") from None
+        outcome = await validation.change_estimate(session, user, task, body.estimate_min, _now())
+    except ReportError:
+        raise _conflict("Так оценка правится после «Готово»; до него — в карточке.") from None
     return await _check_out(session, user, outcome)
 
 

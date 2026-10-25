@@ -59,7 +59,6 @@ export interface TaskDetail extends Task {
     actual_min: number;
     estimate_min: number;
     counted_min: number;
-    capped: boolean;
     value_mult: number;
     verdict: Verdict;
     validation_mult: number;
@@ -124,10 +123,11 @@ export function useTask(id: number | null) {
   });
 }
 
-export function useTimer() {
+// Идущие таймеры: их может быть несколько — по одному на задачу.
+export function useTimers() {
   return useQuery({
-    queryKey: ["timer"],
-    queryFn: () => api.get<RunningTimer | null>("/timer"),
+    queryKey: ["timers"],
+    queryFn: () => api.get<RunningTimer[]>("/timers"),
     // Таймер могли запустить или остановить в Telegram.
     refetchInterval: 30_000,
   });
@@ -140,7 +140,7 @@ function refreshAfter(client: QueryClient, detail?: TaskDetail) {
   if (detail) client.setQueryData(["task", detail.id], detail);
   else void client.invalidateQueries({ queryKey: ["task"] });
   void client.invalidateQueries({ queryKey: ["tasks"] });
-  void client.invalidateQueries({ queryKey: ["timer"] });
+  void client.invalidateQueries({ queryKey: ["timers"] });
   void client.invalidateQueries({ queryKey: ["goals"] });
   void client.invalidateQueries({ queryKey: ["summary"] });
   void client.invalidateQueries({ queryKey: ["character"] });
@@ -191,11 +191,9 @@ export function useTaskAction(id: number) {
   );
 }
 
+// Запуск не останавливает другие таймеры.
 export function useStart(id: number) {
-  return useTaskMutation(
-    () => api.post<{ task: TaskDetail; paused_task_id: number | null }>(`/tasks/${id}/start`),
-    nested,
-  );
+  return useTaskMutation(() => api.post<TaskDetail>(`/tasks/${id}/start`), itself);
 }
 
 export function useReport(id: number) {
@@ -203,20 +201,20 @@ export function useReport(id: number) {
     ({
       text,
       files,
-      spentMin,
+      estimateMin,
       selfCheck = false,
     }: {
       text: string;
       files: File[];
-      spentMin: number | null;
+      estimateMin: number | null;
       // Засчитать самому, без агента: отчёт тогда необязателен.
       selfCheck?: boolean;
     }) => {
       const form = new FormData();
       form.set("text", text);
       if (selfCheck) form.set("self_check", "true");
-      // Сколько ушло на задачу; не указано — по таймеру, а без таймера — по оценке.
-      if (spentMin !== null) form.set("spent_min", String(spentMin));
+      // Сколько засчитать, если не по оценке: XP считается от оценки, таймер — для истории.
+      if (estimateMin !== null) form.set("estimate_min", String(estimateMin));
       files.forEach((file) => form.append("files", file));
       return api.upload<CheckResult>(`/tasks/${id}/report`, form);
     },
@@ -224,10 +222,10 @@ export function useReport(id: number) {
   );
 }
 
-// Поправить, сколько ушло на задачу: у проверенной XP пересчитывается тем же вердиктом.
-export function useChangeTime(id: number) {
+// Оценка задним числом — сколько засчитать: у проверенной XP пересчитывается тем же вердиктом.
+export function useChangeEstimate(id: number) {
   return useTaskMutation(
-    (spentMin: number) => api.post<CheckResult>(`/tasks/${id}/time`, { spent_min: spentMin }),
+    (estimateMin: number) => api.post<CheckResult>(`/tasks/${id}/estimate`, { estimate_min: estimateMin }),
     nested,
   );
 }

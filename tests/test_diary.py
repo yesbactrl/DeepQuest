@@ -185,7 +185,7 @@ async def test_days_show_averages_and_work(
                 task_id=task.id,
                 kind=XpKind.TASK,
                 amount=90,
-                breakdown={},
+                breakdown={"counted_min": 90, "verdict": "accepted"},
                 logical_date=day,
                 season=season_of(day),
             )

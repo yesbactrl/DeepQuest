@@ -30,7 +30,6 @@ async def levels(user: UserDep) -> LevelsOut:
         ],
         rules=XpRulesOut(
             xp_per_minute=xp.XP_PER_MINUTE,
-            cap_factor=xp.CAP_FACTOR,
             value_mults=list(VALUE_MULTIPLIERS),
             validation_mults={verdict.value: mult for verdict, mult in xp.VALIDATION_MULTS.items()},
             no_proof_mult=xp.NO_PROOF_MULT,

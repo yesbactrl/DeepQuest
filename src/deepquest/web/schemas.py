@@ -26,6 +26,7 @@ from deepquest.services.levels import Level
 from deepquest.services.review import PeriodKind, PeriodReview
 from deepquest.services.stats import GoalStats, TaskTotals
 from deepquest.services.summary import Summary
+from deepquest.services.validation import MAX_CREDITED_MIN, MIN_CREDITED_MIN
 
 
 class MeOut(BaseModel):
@@ -215,7 +216,6 @@ class XpBreakdownOut(BaseModel):
     actual_min: int
     estimate_min: int
     counted_min: int
-    capped: bool
     value_mult: float
     verdict: str
     validation_mult: float
@@ -245,9 +245,9 @@ class ReviseIn(BaseModel):
     correction: str | None = Field(default=None, max_length=4000)
 
 
-class TimeIn(BaseModel):
-    # Сутки — с запасом: больше двух оценок в XP всё равно не засчитывается.
-    spent_min: int = Field(ge=1, le=24 * 60)
+class EstimateIn(BaseModel):
+    # Задним числом — до суток: задача могла растянуться дольше оценки агента.
+    estimate_min: int = Field(ge=MIN_CREDITED_MIN, le=MAX_CREDITED_MIN)
 
 
 class DisputeIn(BaseModel):
@@ -272,11 +272,6 @@ class PlanOutcomeOut(BaseModel):
 class ReviseOut(BaseModel):
     task: TaskDetailOut
     agent_failed: bool
-
-
-class StartOut(BaseModel):
-    task: TaskDetailOut
-    paused_task_id: int | None
 
 
 class CheckOut(BaseModel):
@@ -487,7 +482,6 @@ class XpRulesOut(BaseModel):
     """Из чего складывается XP за задачу — те же числа, что в services/xp.py."""
 
     xp_per_minute: int
-    cap_factor: int
     value_mults: list[float]
     validation_mults: dict[str, float]
     # Без пруфа и со скрином или ссылкой.
