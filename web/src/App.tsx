@@ -9,6 +9,7 @@ import { ReviewPage } from "./pages/ReviewPage";
 import { SearchPage } from "./pages/SearchPage";
 import { SleepPage } from "./pages/SleepPage";
 import { DashboardPage } from "./pages/DashboardPage";
+import { DevlogPage } from "./pages/DevlogPage";
 import { DiaryPage } from "./pages/DiaryPage";
 import { GoalsPage } from "./pages/GoalsPage";
 import { TasksPage } from "./pages/TasksPage";
@@ -28,6 +29,7 @@ export function App() {
         <Route path="advisor" element={<AdvisorPage />} />
         <Route path="review" element={<ReviewPage />} />
         <Route path="search" element={<SearchPage />} />
+        <Route path="devlog" element={<DevlogPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

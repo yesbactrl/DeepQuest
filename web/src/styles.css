@@ -50,3 +50,94 @@
     transition: none;
   }
 }
+
+/* «Разработка»: таймлайн коммитов. Линия идёт через все точки дня. */
+.devlog-rail {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  width: 36px;
+  flex-shrink: 0;
+}
+
+.devlog-rail::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+  background: var(--mantine-color-default-border);
+}
+
+.devlog-rail--first::before {
+  top: 18px;
+}
+
+.devlog-rail--last::before {
+  bottom: auto;
+  height: 18px;
+}
+
+.devlog-dot {
+  position: relative;
+  z-index: 1;
+  margin-top: 12px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px var(--mantine-color-body);
+}
+
+.devlog-milestone {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  margin-top: 4px;
+  border-radius: 50%;
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  background: linear-gradient(135deg, var(--mantine-color-violet-6), var(--mantine-color-indigo-6));
+  box-shadow:
+    0 0 0 4px var(--mantine-color-body),
+    0 0 0 6px var(--mantine-color-violet-light);
+}
+
+.devlog-item {
+  animation: devlog-in 420ms ease both;
+}
+
+@keyframes devlog-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+.devlog-hero {
+  background:
+    radial-gradient(circle at 0% 0%, var(--mantine-color-violet-light), transparent 55%),
+    radial-gradient(circle at 100% 100%, var(--mantine-color-indigo-light), transparent 50%);
+}
+
+.devlog-bar {
+  flex: 1;
+  min-width: 6px;
+  border-radius: 3px 3px 0 0;
+  cursor: pointer;
+  transition: opacity 120ms ease;
+}
+
+.devlog-bar:hover {
+  opacity: 0.75;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .devlog-item {
+    animation: none;
+  }
+}

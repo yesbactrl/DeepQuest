@@ -14,6 +14,7 @@ import {
   IconBed,
   IconMessageChatbot,
   IconCalendarWeek,
+  IconGitCommit,
   IconLayoutDashboard,
   IconListCheck,
   IconMoon,
@@ -39,6 +40,7 @@ const SECTIONS = [
   { to: "/advisor", label: "Советник", icon: IconMessageChatbot },
   { to: "/goals", label: "Цели", icon: IconTarget },
   { to: "/search", label: "Поиск", icon: IconSearch },
+  { to: "/devlog", label: "Разработка", icon: IconGitCommit },
 ];
 
 function ColorSchemeToggle() {

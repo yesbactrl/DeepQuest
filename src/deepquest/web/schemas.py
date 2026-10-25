@@ -911,3 +911,35 @@ class AdvisorInfoOut(BaseModel):
     available: bool
     models: dict[str, str]
     default_model: str
+
+
+# История разработки
+
+
+class DevCommitOut(_FromAttrs):
+    hash: str
+    short: str
+    at: datetime
+    subject: str
+    title: str
+    milestone: str | None
+    area: str | None
+    kind: str
+    points: list[str]
+    files: int
+    insertions: int
+    deletions: int
+
+
+class DevDayOut(_FromAttrs):
+    day: date
+    insertions: int
+    deletions: int
+    commits: list[DevCommitOut]
+
+
+class DevlogOut(_FromAttrs):
+    commits: int
+    milestones: int
+    insertions: int
+    days: list[DevDayOut]

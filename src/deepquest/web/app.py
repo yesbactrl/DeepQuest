@@ -17,6 +17,7 @@ from deepquest.web.routes import (
     advisor,
     character,
     dashboard,
+    devlog,
     diary,
     goals,
     me,
@@ -72,6 +73,7 @@ def create_app(
     app.include_router(review.router)
     app.include_router(sleep.router)
     app.include_router(advisor.router)
+    app.include_router(devlog.router)
 
     @app.api_route("/api/{path:path}", methods=["GET", "POST", "PATCH", "PUT", "DELETE"])
     async def unknown_api(path: str) -> None:
