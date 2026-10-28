@@ -1,11 +1,11 @@
 import { ActionIcon, Badge, Button, Group, Menu, Paper, Stack, Text, Tooltip } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
-import { IconDots, IconPencil, IconRefresh, IconTrash } from "@tabler/icons-react";
+import { IconCalendarEvent, IconDots, IconPencil, IconRefresh, IconTrash } from "@tabler/icons-react";
 
 import { type DiaryEntry, useAnalyzeEntry, useDeleteEntry, useEditEntry } from "../../api/diary";
 import { useGoals } from "../../api/goals";
-import { PART_OF_DAY, SCALES, entryTime, formatScore, scoreColor } from "../../lib/diary";
+import { SCALES, entryWritten, formatScore, scoreColor } from "../../lib/diary";
 import { SphereNotes } from "./Spheres";
 
 export function ScoreBadges({
@@ -73,7 +73,7 @@ export function EntryCard({ entry, onEdit }: { entry: DiaryEntry; onEdit: (entry
         <Group justify="space-between" wrap="nowrap" align="flex-start">
           <Stack gap={2} style={{ minWidth: 0 }}>
             <Text size="xs" c="dimmed">
-              {entryTime(entry)} · {PART_OF_DAY[entry.part_of_day]}
+              {entryWritten(entry)}
               {entry.edited && " · поправлено вручную"}
             </Text>
             {entry.summary && <Text fw={500}>{entry.summary}</Text>}
@@ -90,6 +90,9 @@ export function EntryCard({ entry, onEdit }: { entry: DiaryEntry; onEdit: (entry
             <Menu.Dropdown>
               <Menu.Item leftSection={<IconPencil size={16} />} onClick={() => onEdit(entry)}>
                 Изменить
+              </Menu.Item>
+              <Menu.Item leftSection={<IconCalendarEvent size={16} />} onClick={() => onEdit(entry)}>
+                Перенести на другой день
               </Menu.Item>
               <Menu.Item leftSection={<IconRefresh size={16} />} onClick={runAnalysis}>
                 Разобрать заново

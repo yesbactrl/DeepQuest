@@ -36,9 +36,11 @@ async def _entry(session: AsyncSession, user: User, entry_id: int) -> DiaryEntry
     return entry
 
 
-def _result(outcome: EntryOutcome) -> DiaryEntryResult:
+def _result(outcome: EntryOutcome, user: User) -> DiaryEntryResult:
     return DiaryEntryResult(
-        entry=DiaryEntryOut.of(outcome.entry), agent_failed=outcome.agent_failed, xp=outcome.xp
+        entry=DiaryEntryOut.of(outcome.entry, user),
+        agent_failed=outcome.agent_failed,
+        xp=outcome.xp,
     )
 
 
@@ -50,7 +52,7 @@ async def list_diary(
     goal_id: int | None = None,
 ) -> DiaryOut:
     items = await diary.list_days(session, user, _now(), days, goal_id)
-    return DiaryOut(days=[DiaryDayOut.of(day) for day in items], norm_min=user.daily_norm_min)
+    return DiaryOut(days=[DiaryDayOut.of(day, user) for day in items], norm_min=user.daily_norm_min)
 
 
 @router.post("", status_code=201)
@@ -66,10 +68,11 @@ async def add_entry(
             _now(),
             analyze=body.analyze,
             goal_ids=body.goal_ids,
+            day=body.day,
         )
-    except diary.DiaryError:
-        raise HTTPException(422, "Напиши хоть пару слов.") from None
-    return _result(outcome)
+    except diary.DiaryError as exc:
+        raise HTTPException(422, str(exc)) from None
+    return _result(outcome, user)
 
 
 @router.patch("/{entry_id}")
@@ -77,7 +80,12 @@ async def edit_entry(
     entry_id: int, body: DiaryEditIn, session: SessionDep, user: UserDep
 ) -> DiaryEntryOut:
     entry = await _entry(session, user, entry_id)
-    changes = body.model_dump(exclude={"spheres"})
+    if body.day is not None:
+        try:
+            await diary.move_entry(session, user, entry, body.day, _now())
+        except diary.DiaryError as exc:
+            raise HTTPException(422, str(exc)) from None
+    changes = body.model_dump(exclude={"spheres", "day"})
     spheres = (
         [SphereEdit(s.goal_id, s.score, s.good, s.bad) for s in body.spheres]
         if body.spheres is not None
@@ -85,7 +93,7 @@ async def edit_entry(
     )
     await diary.edit_entry(session, user, entry, EntryEdit(**changes, spheres=spheres))
     await session.flush()
-    return DiaryEntryOut.of(entry)
+    return DiaryEntryOut.of(entry, user)
 
 
 @router.post("/{entry_id}/analyze")
@@ -93,7 +101,7 @@ async def analyze_entry(
     entry_id: int, session: SessionDep, user: UserDep, context: ContextDep
 ) -> DiaryEntryResult:
     entry = await _entry(session, user, entry_id)
-    return _result(await diary.reanalyze(session, context.agent, user, entry))
+    return _result(await diary.reanalyze(session, context.agent, user, entry), user)
 
 
 @router.delete("/{entry_id}", status_code=204)

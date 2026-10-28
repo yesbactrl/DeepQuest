@@ -37,7 +37,15 @@ function Body({ draft, onClose }: { draft: SleepDraft; onClose: () => void }) {
     save.mutate(
       { ...value, note: value.note?.trim() || null },
       {
-        onSuccess: onClose,
+        onSuccess: (saved) => {
+          onClose();
+          if (saved.xp_delta !== 0) {
+            notifications.show({
+              color: saved.xp_delta > 0 ? "teal" : "gray",
+              message: `Сон записан · ${saved.xp_delta > 0 ? "+" : ""}${saved.xp_delta} XP`,
+            });
+          }
+        },
         onError: (error) => notifications.show({ color: "red", message: error.message }),
       },
     );

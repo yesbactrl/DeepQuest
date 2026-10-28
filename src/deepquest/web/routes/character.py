@@ -35,6 +35,9 @@ async def levels(user: UserDep) -> LevelsOut:
             no_proof_mult=xp.NO_PROOF_MULT,
             proof_mult=xp.PROOF_MULT,
             weak_stat_mult=WEAK_STAT_MULT,
+            diary_entry_xp=xp.DIARY_ENTRY_XP,
+            sleep_night_xp=xp.SLEEP_NIGHT_XP,
+            sleep_nap_xp=xp.SLEEP_NAP_XP,
         ),
         daily_norm_min=user.daily_norm_min,
     )

@@ -19,7 +19,15 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from deepquest.db.models import Task, User, ValidationVerdict, XpEvent, XpKind
+from deepquest.db.models import (
+    SleepKind,
+    SleepSession,
+    Task,
+    User,
+    ValidationVerdict,
+    XpEvent,
+    XpKind,
+)
 from deepquest.services.days import season_of, user_logical_date
 
 XP_PER_MINUTE = 1
@@ -34,6 +42,10 @@ NO_PROOF_MULT = 1.0
 PROOF_MULT = 1.1
 # За каждую запись в дневник: копим данные для будущих ретроспектив. Откалибруем позже.
 DIARY_ENTRY_XP = 15
+# За сон — раз в день по дню пробуждения (решено 2026-10-28): ночной сон — основная запись,
+# дневной — маленькая добавка, сколько бы раз ни досыпал.
+SLEEP_NIGHT_XP = 10
+SLEEP_NAP_XP = 5
 
 
 @dataclass(frozen=True)
@@ -161,6 +173,50 @@ async def record_diary_xp(
     session.add(event)
     await session.flush()
     return event
+
+
+async def sync_sleep_xp(session: AsyncSession, user: User, day: date) -> int:
+    """XP за сон дня: +10, если записан ночной сон, и +5, если был ещё и дневной — по
+    одному разу за день, сколько бы отрезков ни было. Вызывается после любой правки сна
+    этого дня: журнал дописывается разницей к уже начисленному. Возвращает разницу."""
+    kinds = set(
+        await session.scalars(
+            select(SleepSession.kind).where(
+                SleepSession.user_id == user.id, SleepSession.day == day
+            )
+        )
+    )
+    night, nap = SleepKind.NIGHT in kinds, SleepKind.NAP in kinds
+    due = (SLEEP_NIGHT_XP if night else 0) + (SLEEP_NAP_XP if nap else 0)
+    already = await session.scalar(
+        select(func.coalesce(func.sum(XpEvent.amount), 0)).where(
+            XpEvent.user_id == user.id, XpEvent.kind == XpKind.SLEEP, XpEvent.logical_date == day
+        )
+    )
+    delta = due - (already or 0)
+    if delta:
+        session.add(
+            XpEvent(
+                user_id=user.id,
+                kind=XpKind.SLEEP,
+                amount=delta,
+                breakdown={"day": day.isoformat(), "night": night, "nap": nap},
+                logical_date=day,
+                season=season_of(day),
+            )
+        )
+        await session.flush()
+    return delta
+
+
+async def sleep_xp(session: AsyncSession, user: User) -> int:
+    """Всё, что начислено за сон: разница до и после правки — сколько она принесла."""
+    total = await session.scalar(
+        select(func.coalesce(func.sum(XpEvent.amount), 0)).where(
+            XpEvent.user_id == user.id, XpEvent.kind == XpKind.SLEEP
+        )
+    )
+    return total or 0
 
 
 async def diary_entry_xp(session: AsyncSession, entry_id: int) -> int:

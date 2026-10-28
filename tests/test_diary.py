@@ -1,10 +1,10 @@
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import httpx
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from deepquest.agent.schemas import DiaryAnalysis, DiarySphereNote
@@ -219,6 +219,70 @@ async def client(
         headers={"X-DeepQuest": "1"},
     ) as client:
         yield client
+
+
+async def _diary_xp(session: AsyncSession, user: User) -> dict[date, int]:
+    rows = await session.execute(
+        select(XpEvent.logical_date, func.sum(XpEvent.amount))
+        .where(XpEvent.user_id == user.id, XpEvent.kind == XpKind.DIARY)
+        .group_by(XpEvent.logical_date)
+    )
+    return {day: amount for day, amount in rows if amount}
+
+
+async def test_entry_backdated_and_moved(
+    sessionmaker: async_sessionmaker[AsyncSession], user_id: int
+) -> None:
+    agent = FakeAgent()
+    agent.diary.append(analysis())
+    yesterday, today = date(2026, 10, 19), date(2026, 10, 20)
+    async with sessionmaker() as session:
+        user = await _user(session, user_id)
+        # Забыл записать вчера — пишу сегодня утром, про вчера.
+        outcome = await diary.add_entry(
+            session, agent, user, "Вчера весь день был бодрым", MORNING, day=yesterday
+        )
+        entry = outcome.entry
+        assert (entry.logical_date, entry.part_of_day) == (yesterday, "evening")
+        assert diary.backdated(user, entry)
+        # Агент знает, что запись про прошлый день.
+        assert (
+            "задним числом: запись про понедельник, 19 октября" in agent.diary_entries[0].written_at
+        )
+        assert await _diary_xp(session, user) == {yesterday: 15}
+
+        # Перенос обратно на сегодня: XP переезжает вместе с записью.
+        await diary.move_entry(session, user, entry, today, MORNING)
+        await session.flush()
+        assert entry.logical_date == today and not diary.backdated(user, entry)
+        assert await _diary_xp(session, user) == {today: 15}
+
+        with pytest.raises(diary.DiaryError, match="будущий"):
+            await diary.move_entry(session, user, entry, date(2026, 10, 21), MORNING)
+        with pytest.raises(diary.DiaryError, match="30 дней"):
+            await diary.add_entry(
+                session, agent, user, "Давно", MORNING, day=date(2026, 9, 1), analyze=False
+            )
+
+
+async def test_diary_api_backdate(client: httpx.AsyncClient, agent: FakeAgent) -> None:
+    agent.diary += [analysis(), analysis()]
+    today = (await client.post("/api/diary", json={"text": "Сегодня"})).json()["entry"]
+    assert today["backdated"] is False
+    day = date.fromisoformat(today["logical_date"])
+    earlier = (day - timedelta(days=1)).isoformat()
+
+    created = await client.post("/api/diary", json={"text": "Про вчера", "day": earlier})
+    assert created.status_code == 201
+    assert (created.json()["entry"]["logical_date"], created.json()["entry"]["backdated"]) == (
+        earlier,
+        True,
+    )
+    moved = (await client.patch(f"/api/diary/{today['id']}", json={"day": earlier})).json()
+    assert (moved["logical_date"], moved["backdated"]) == (earlier, True)
+    future = (day + timedelta(days=1)).isoformat()
+    bad = await client.patch(f"/api/diary/{today['id']}", json={"day": future})
+    assert bad.status_code == 422 and "будущий" in bad.json()["detail"]
 
 
 async def test_diary_api(client: httpx.AsyncClient, agent: FakeAgent) -> None:

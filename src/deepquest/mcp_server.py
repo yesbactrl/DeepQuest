@@ -494,7 +494,9 @@ class Advisor:
 
         return await self._run(work)
 
-    async def add_diary_entry(self, text: str, analyze: bool = True) -> str:
+    async def add_diary_entry(
+        self, text: str, analyze: bool = True, day: date | None = None
+    ) -> str:
         async def work(session: AsyncSession, user: User, now: datetime) -> str:
             # Без агента запись сохраняется неразобранной: оценки поставишь в вебе.
             analyze_now = analyze and self._agent is not None
@@ -506,11 +508,12 @@ class Advisor:
                     text,
                     now,
                     analyze=analyze_now,
+                    day=day,
                 )
-            except diary.DiaryError:
-                raise AdvisorError("Пустую запись не сохранить.") from None
+            except diary.DiaryError as exc:
+                raise AdvisorError(str(exc)) from None
             e = outcome.entry
-            result = f"Запись #{e.id} сохранена, +{outcome.xp} XP."
+            result = f"Запись #{e.id} сохранена на {_day(e.logical_date)}, +{outcome.xp} XP."
             if e.summary or _entry_scores(e):
                 result += f" Разбор: {e.summary or ''} [{_entry_scores(e)}]"
             if outcome.agent_failed:
@@ -659,10 +662,11 @@ def build_server(advisor: Advisor) -> MCPServer:
         return await call(advisor.schedule_task(task_id, day))
 
     @server.tool(annotations=WRITE)
-    async def add_diary_entry(text: str, analyze: bool = True) -> str:
+    async def add_diary_entry(text: str, analyze: bool = True, day: date | None = None) -> str:
         """Запись в дневник словами пользователя (+15 XP). analyze — разобрать агентом
-        на оценки и теги (около 15 секунд)."""
-        return await call(advisor.add_diary_entry(text, analyze))
+        на оценки и теги (около 15 секунд). day — YYYY-MM-DD, если запись про прошлый день
+        (задним числом, до 30 дней назад); пусто — сегодня."""
+        return await call(advisor.add_diary_entry(text, analyze, day))
 
     @server.tool(annotations=WRITE)
     async def log_sleep(
@@ -673,7 +677,8 @@ def build_server(advisor: Advisor) -> MCPServer:
         note: str | None = None,
     ) -> str:
         """Записать сон. start и end — местное время пользователя (YYYY-MM-DDTHH:MM),
-        kind — night (ночной) или nap (дневной), quality — 1–10, как выспался."""
+        kind — night (ночной) или nap (дневной), quality — 1–10, как выспался.
+        За день: +10 XP за ночной сон и +5, если ещё и поспал днём."""
         return await call(advisor.log_sleep(start, end, kind, quality, note))
 
     @server.tool(annotations=WRITE)

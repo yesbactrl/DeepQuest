@@ -24,7 +24,7 @@ export interface Stat {
 }
 
 export interface Award {
-  kind: "task" | "correction" | "diary";
+  kind: "task" | "correction" | "diary" | "sleep";
   amount: number;
   task_title: string | null;
   stat: string | null;
@@ -61,6 +61,9 @@ export interface XpRules {
   no_proof_mult: number;
   proof_mult: number;
   weak_stat_mult: number;
+  diary_entry_xp: number;
+  sleep_night_xp: number;
+  sleep_nap_xp: number;
 }
 
 export interface Levels {

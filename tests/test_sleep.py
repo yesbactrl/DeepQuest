@@ -4,9 +4,10 @@ from pathlib import Path
 
 import httpx
 import pytest
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from deepquest.db.models import SleepKind, User
+from deepquest.db.models import SleepKind, User, XpEvent, XpKind
 from deepquest.services import sleep
 from deepquest.services.proofs import ProofStore
 from deepquest.services.sleep import SleepInput
@@ -177,3 +178,61 @@ async def test_sleep_api(client: httpx.AsyncClient) -> None:
 
     assert (await client.delete(f"/api/sleep/{item['id']}")).status_code == 204
     assert (await client.delete(f"/api/sleep/{item['id']}")).status_code == 404
+
+
+# XP за сон
+
+
+async def _sleep_xp(session: AsyncSession, user: User) -> dict[date, int]:
+    rows = await session.execute(
+        select(XpEvent.logical_date, func.sum(XpEvent.amount))
+        .where(XpEvent.user_id == user.id, XpEvent.kind == XpKind.SLEEP)
+        .group_by(XpEvent.logical_date)
+    )
+    return {day: amount for day, amount in rows if amount}
+
+
+async def test_sleep_xp_once_per_day(
+    sessionmaker: async_sessionmaker[AsyncSession], user_id: int
+) -> None:
+    async with sessionmaker() as session:
+        user = await _user(session, user_id)
+        night = await sleep.add_session(
+            session, user, SleepInput(SleepKind.NIGHT, at(22, 23), at(23, 7)), NOW
+        )
+        assert await _sleep_xp(session, user) == {date(2026, 10, 23): 10}
+        # Два дневных сна за день — всё равно +5 один раз.
+        await sleep.add_session(
+            session, user, SleepInput(SleepKind.NAP, at(23, 14), at(23, 15)), NOW
+        )
+        nap = await sleep.add_session(
+            session, user, SleepInput(SleepKind.NAP, at(23, 17), at(23, 17, 30)), NOW
+        )
+        assert await _sleep_xp(session, user) == {date(2026, 10, 23): 15}
+
+        # Ночь перенесли на другое утро: XP уходит из старого дня в новый.
+        await sleep.edit_session(
+            session, user, night, SleepInput(SleepKind.NIGHT, at(23, 23), at(24, 7)), NOW
+        )
+        assert await _sleep_xp(session, user) == {date(2026, 10, 23): 5, date(2026, 10, 24): 10}
+
+        # Один дневной убрали — второй остаётся, +5 не снимается; второй убрали — снимается.
+        await sleep.delete_session(session, user, nap)
+        assert await _sleep_xp(session, user) == {date(2026, 10, 23): 5, date(2026, 10, 24): 10}
+        friday = date(2026, 10, 23)
+        [other] = await sleep.sessions_between(session, user, friday, friday)
+        await sleep.delete_session(session, user, other)
+        assert await _sleep_xp(session, user) == {date(2026, 10, 24): 10}
+
+
+async def test_sleep_api_reports_xp(client: httpx.AsyncClient) -> None:
+    night = {"kind": "night", "start": "2026-10-20T23:30", "end": "2026-10-21T07:15"}
+    created = (await client.post("/api/sleep", json=night)).json()
+    assert created["xp_delta"] == 10
+    nap = {"kind": "nap", "start": "2026-10-21T14:00", "end": "2026-10-21T15:00"}
+    assert (await client.post("/api/sleep", json=nap)).json()["xp_delta"] == 5
+    # Правка того же дня ничего не добавляет.
+    edited = (
+        await client.patch(f"/api/sleep/{created['id']}", json={**night, "quality": 7})
+    ).json()
+    assert edited["xp_delta"] == 0

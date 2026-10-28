@@ -15,6 +15,8 @@ export interface SleepSession {
   minutes: number;
   quality: number | null;
   note: string | null;
+  // Сколько XP принесла правка: за день +10 за ночной сон и +5 за дневной.
+  xp_delta: number;
 }
 
 export interface SleepDay {
@@ -83,8 +85,12 @@ function useSleepMutation<I, O>(mutationFn: (input: I) => Promise<O>) {
     mutationFn,
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: SLEEP_KEY });
-      // Сон есть и в итогах периода.
+      // Сон есть и в итогах периода, а XP за него — в уровне, персонаже и графиках.
       void client.invalidateQueries({ queryKey: ["review"] });
+      void client.invalidateQueries({ queryKey: ["summary"] });
+      void client.invalidateQueries({ queryKey: ["character"] });
+      void client.invalidateQueries({ queryKey: ["chart"] });
+      void client.invalidateQueries({ queryKey: ["diary"] });
     },
   });
 }

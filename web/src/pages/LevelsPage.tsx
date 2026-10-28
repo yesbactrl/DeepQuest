@@ -95,6 +95,11 @@ function Rules({ levels }: { levels: Levels }) {
     ],
     ["Пруф", `нет ${formatMult(rules.no_proof_mult)} · скрин или ссылка ${formatMult(rules.proof_mult)} — бонус за данные`],
     ["Самый слабый стат", `${formatMult(rules.weak_stat_mult)} — бонус цели, которая отстаёт за сезон`],
+    ["Дневник", `+${rules.diary_entry_xp} XP за каждую запись`],
+    [
+      "Сон",
+      `+${rules.sleep_night_xp} XP за день с ночным сном, +${rules.sleep_nap_xp} — если ещё и поспал днём (раз в день)`,
+    ],
   ];
   return (
     <Card withBorder padding="md">

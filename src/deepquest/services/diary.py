@@ -31,6 +31,8 @@ MAX_TAGS = 6
 MAX_TAG_LEN = 40
 MAX_SUMMARY_LEN = 120
 MAX_NOTE_LEN = 160
+# Насколько назад можно отнести запись: забыл вчера — вспомнишь не позже чем через месяц.
+MAX_BACKDATE_DAYS = 30
 # Сколько прошлых факторов и эмоций подсказывать агенту, чтобы он брал те же слова.
 KNOWN_TAGS = 40
 
@@ -56,12 +58,31 @@ def part_of_day(user: User, moment: datetime) -> str:
     return "evening"
 
 
+def backdated(user: User, entry: DiaryEntry) -> bool:
+    """Запись относится не к тому дню, когда написана: задним числом или перенесена."""
+    return entry.logical_date != user_logical_date(user, entry.created_at)
+
+
+def _day_text(day: date) -> str:
+    return f"{WEEKDAYS[day.weekday()]}, {day.day} {MONTHS[day.month - 1]}"
+
+
 def _written_at(user: User, entry: DiaryEntry) -> str:
     moment = local_time(user, entry.created_at)
-    return (
-        f"{WEEKDAYS[moment.weekday()]}, {moment.day} {MONTHS[moment.month - 1]}, "
-        f"{moment:%H:%M} ({PARTS_OF_DAY[entry.part_of_day]})"
-    )
+    written = f"{_day_text(moment.date())}, {moment:%H:%M}"
+    if backdated(user, entry):
+        # Агенту важно знать, что запись — про другой день, а не про «сейчас».
+        return f"задним числом: запись про {_day_text(entry.logical_date)}, написана {written}"
+    return f"{written} ({PARTS_OF_DAY[entry.part_of_day]})"
+
+
+def check_day(user: User, day: date, now: datetime) -> None:
+    """Запись можно отнести к сегодня или к одному из прошлых дней, но не к будущему."""
+    today = user_logical_date(user, now)
+    if day > today:
+        raise DiaryError("Запись про будущий день не сделать.")
+    if day < today - timedelta(days=MAX_BACKDATE_DAYS):
+        raise DiaryError(f"Задним числом — не дальше {MAX_BACKDATE_DAYS} дней назад.")
 
 
 def clean_tags(tags: list[str]) -> list[str]:
@@ -207,17 +228,24 @@ async def add_entry(
     *,
     analyze: bool = True,
     goal_ids: list[int] | None = None,
+    day: date | None = None,
 ) -> EntryOutcome:
     """Новая запись. `analyze=False` — не отдавать текст агенту: оценки тогда ставятся вручную.
-    `goal_ids` — сферы, которые пользователь отметил сам: про них агент напишет обязательно."""
+    `goal_ids` — сферы, которые пользователь отметил сам: про них агент напишет обязательно.
+    `day` — к какому дню отнести запись, если не к сегодня: забыл записать вчера, но помнишь.
+    XP за неё тогда идёт в тот день."""
     text = text.strip()[:MAX_TEXT_LEN]
     if not text:
-        raise DiaryError("Empty diary entry")
+        raise DiaryError("Напиши хоть пару слов.")
+    today = user_logical_date(user, now)
+    if day is not None:
+        check_day(user, day, now)
     entry = DiaryEntry(
         user_id=user.id,
         text=text,
-        logical_date=user_logical_date(user, now),
-        part_of_day=part_of_day(user, now),
+        logical_date=day or today,
+        # Запись задним числом — взгляд на день целиком, как вечерняя.
+        part_of_day=part_of_day(user, now) if day in (None, today) else "evening",
         created_at=now,
         emotions=[],
         factors=[],
@@ -284,6 +312,21 @@ async def edit_entry(session: AsyncSession, user: User, entry: DiaryEntry, edit:
         roots = _roots(await goal_context(session, user))
         _set_spheres(entry, edit.spheres, roots, [])
         entry.edited = True
+
+
+async def move_entry(
+    session: AsyncSession, user: User, entry: DiaryEntry, day: date, now: datetime
+) -> None:
+    """Перенести запись на другой день. XP за неё переезжает вместе с ней: минус в старом
+    дне, плюс в новом — журнал только дописывается."""
+    check_day(user, day, now)
+    if day == entry.logical_date:
+        return
+    earned = await xp.diary_entry_xp(session, entry.id)
+    if earned:
+        await xp.record_diary_xp(session, user, entry.id, entry.logical_date, amount=-earned)
+        await xp.record_diary_xp(session, user, entry.id, day, amount=earned)
+    entry.logical_date = day
 
 
 async def delete_entry(session: AsyncSession, user: User, entry: DiaryEntry, now: datetime) -> None:

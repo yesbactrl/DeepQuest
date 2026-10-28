@@ -20,7 +20,7 @@ from deepquest.db.models import (
 )
 from deepquest.services.character import Award, Character, Stat
 from deepquest.services.charts import ChartConfig, ChartData
-from deepquest.services.diary import Day
+from deepquest.services.diary import Day, backdated
 from deepquest.services.goals import MAX_TITLE_LEN, MAX_WHY_LEN, PALETTE, goal_path
 from deepquest.services.levels import Level
 from deepquest.services.review import PeriodKind, PeriodReview
@@ -488,6 +488,10 @@ class XpRulesOut(BaseModel):
     no_proof_mult: float
     proof_mult: float
     weak_stat_mult: float
+    # Не за задачи: запись в дневник, сон за день — ночной и дневной.
+    diary_entry_xp: int
+    sleep_night_xp: int
+    sleep_nap_xp: int
 
 
 class LevelsOut(BaseModel):
@@ -538,10 +542,13 @@ class DiaryEntryOut(BaseModel):
     edited: bool
     # Сферы — цели, о которых запись что-то говорит. Название и цвет фронтенд берёт из целей.
     spheres: list[DiarySphereOut]
+    # Запись про другой день, чем написана: задним числом или перенесена.
+    backdated: bool
 
     @classmethod
-    def of(cls, entry: DiaryEntry) -> DiaryEntryOut:
+    def of(cls, entry: DiaryEntry, user: User) -> DiaryEntryOut:
         return cls(
+            backdated=backdated(user, entry),
             id=entry.id,
             text=entry.text,
             created_at=entry.created_at,
@@ -572,7 +579,7 @@ class DiaryDayOut(BaseModel):
     entries: list[DiaryEntryOut]
 
     @classmethod
-    def of(cls, day: Day) -> DiaryDayOut:
+    def of(cls, day: Day, user: User) -> DiaryDayOut:
         return cls(
             day=day.day,
             mood=day.mood,
@@ -580,7 +587,7 @@ class DiaryDayOut(BaseModel):
             drive=day.drive,
             focus_min=day.focus_min,
             xp=day.xp,
-            entries=[DiaryEntryOut.of(entry) for entry in day.entries],
+            entries=[DiaryEntryOut.of(entry, user) for entry in day.entries],
         )
 
 
@@ -595,6 +602,8 @@ class DiaryIn(BaseModel):
     analyze: bool = True
     # Сферы, которые пользователь отметил сам: про них агент напишет обязательно.
     goal_ids: list[int] = Field(default_factory=list, max_length=20)
+    # Логический день записи, если не сегодня: задним числом, до 30 дней назад.
+    day: date | None = None
 
 
 class DiarySphereIn(BaseModel):
@@ -616,6 +625,8 @@ class DiaryEditIn(BaseModel):
     summary: str | None = Field(default=None, max_length=200)
     # Сферы целиком; пусто — не менять.
     spheres: list[DiarySphereIn] | None = Field(default=None, max_length=20)
+    # Перенести запись на другой день (XP переезжает вместе с ней).
+    day: date | None = None
 
 
 class SearchTaskOut(BaseModel):
@@ -808,6 +819,8 @@ class SleepSessionOut(BaseModel):
     minutes: int
     quality: int | None
     note: str | None
+    # Сколько XP за сон принесла эта правка (за день: +10 ночь, +5 дневной).
+    xp_delta: int = 0
 
 
 class SleepDayOut(BaseModel):

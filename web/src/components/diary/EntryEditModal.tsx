@@ -15,9 +15,10 @@ import { notifications } from "@mantine/notifications";
 import { IconX } from "@tabler/icons-react";
 import { useState } from "react";
 
+import { useSummary } from "../../api/dashboard";
 import { type DiaryEntry, useEditEntry } from "../../api/diary";
 import { useGoals } from "../../api/goals";
-import { SCALES, type ScaleKey } from "../../lib/diary";
+import { SCALES, type ScaleKey, pastDayOptions } from "../../lib/diary";
 import { ScorePicker } from "./Spheres";
 
 interface SphereDraft {
@@ -94,6 +95,8 @@ function SpheresEditor({ value, onChange }: { value: SphereDraft[]; onChange: (n
 
 function Body({ entry, onClose }: { entry: DiaryEntry; onClose: () => void }) {
   const edit = useEditEntry(entry.id);
+  const today = useSummary().data?.streak.today ?? null;
+  const [day, setDay] = useState(entry.logical_date);
   const [text, setText] = useState(entry.text);
   const [summary, setSummary] = useState(entry.summary ?? "");
   // 0 — оценки нет: «из записи не понять» или «не знаю».
@@ -110,7 +113,8 @@ function Body({ entry, onClose }: { entry: DiaryEntry; onClose: () => void }) {
 
   function save() {
     edit.mutate(
-      { text, summary, ...scores, emotions, factors, spheres },
+      // День отправляется, только если его поменяли: перенос двигает и XP за запись.
+      { text, summary, ...scores, emotions, factors, spheres, ...(day !== entry.logical_date ? { day } : {}) },
       {
         onSuccess: () => {
           notifications.show({ color: "teal", message: "Запись обновлена" });
@@ -121,8 +125,21 @@ function Body({ entry, onClose }: { entry: DiaryEntry; onClose: () => void }) {
     );
   }
 
+  const days = today ? pastDayOptions(today) : [];
+  if (!days.some((option) => option.value === entry.logical_date)) {
+    days.push({ value: entry.logical_date, label: entry.logical_date });
+  }
   return (
     <Stack>
+      <Select
+        label="День"
+        description="Запись про другой день — перенеси её туда. XP за запись переедет вместе с ней."
+        data={days}
+        value={day}
+        onChange={(value) => value && setDay(value)}
+        allowDeselect={false}
+        w={{ base: "100%", sm: 280 }}
+      />
       {SCALES.map((scale) => (
         <Stack key={scale.key} gap={2}>
           <Group justify="space-between">

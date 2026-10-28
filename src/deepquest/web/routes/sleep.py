@@ -8,7 +8,7 @@ from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from deepquest.db.models import SleepSession, User
-from deepquest.services import sleep
+from deepquest.services import sleep, xp
 from deepquest.services.sleep import DaySleep, SleepInput
 from deepquest.web.deps import SessionDep, UserDep
 from deepquest.web.schemas import (
@@ -27,7 +27,7 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
-def _session_out(user: User, item: SleepSession) -> SleepSessionOut:
+def _session_out(user: User, item: SleepSession, xp_delta: int = 0) -> SleepSessionOut:
     return SleepSessionOut(
         id=item.id,
         kind=item.kind,
@@ -37,6 +37,7 @@ def _session_out(user: User, item: SleepSession) -> SleepSessionOut:
         minutes=int((item.ended_at - item.started_at).total_seconds() // 60),
         quality=item.quality,
         note=item.note,
+        xp_delta=xp_delta,
     )
 
 
@@ -87,11 +88,12 @@ async def overview(
 
 @router.post("", status_code=201)
 async def add(body: SleepIn, session: SessionDep, user: UserDep) -> SleepSessionOut:
+    before = await xp.sleep_xp(session, user)
     try:
         item = await sleep.add_session(session, user, _input(body), _now())
     except sleep.SleepError as exc:
         raise HTTPException(422, str(exc)) from None
-    return _session_out(user, item)
+    return _session_out(user, item, await xp.sleep_xp(session, user) - before)
 
 
 @router.patch("/goal")
@@ -106,14 +108,15 @@ async def set_goal(body: SleepGoalIn, session: SessionDep, user: UserDep) -> dic
 @router.patch("/{sleep_id}")
 async def edit(sleep_id: int, body: SleepIn, session: SessionDep, user: UserDep) -> SleepSessionOut:
     item = await _get(session, user, sleep_id)
+    before = await xp.sleep_xp(session, user)
     try:
         await sleep.edit_session(session, user, item, _input(body), _now())
     except sleep.SleepError as exc:
         raise HTTPException(422, str(exc)) from None
-    return _session_out(user, item)
+    return _session_out(user, item, await xp.sleep_xp(session, user) - before)
 
 
 @router.delete("/{sleep_id}", status_code=204)
 async def delete(sleep_id: int, session: SessionDep, user: UserDep) -> Response:
-    await session.delete(await _get(session, user, sleep_id))
+    await sleep.delete_session(session, user, await _get(session, user, sleep_id))
     return Response(status_code=204)

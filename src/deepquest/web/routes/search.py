@@ -27,5 +27,5 @@ async def run_search(
             )
             for hit in result.tasks
         ],
-        entries=[DiaryEntryOut.of(entry) for entry in result.entries],
+        entries=[DiaryEntryOut.of(entry, user) for entry in result.entries],
     )

@@ -1,4 +1,5 @@
 import type { DiaryEntry, PartOfDay } from "../api/diary";
+import { addDays, shortDate } from "./plan";
 
 // Три шкалы дневника — в том же порядке, что в промпте агента.
 export const SCALES = [
@@ -31,6 +32,25 @@ export function formatScore(value: number): string {
 
 export function entryTime(entry: DiaryEntry): string {
   return new Date(entry.created_at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+}
+
+// Когда написана запись: у записи задним числом — с датой, иначе время и часть дня.
+export function entryWritten(entry: DiaryEntry): string {
+  if (!entry.backdated) return `${entryTime(entry)} · ${PART_OF_DAY[entry.part_of_day]}`;
+  const date = new Date(entry.created_at).toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
+  return `задним числом · написано ${date} в ${entryTime(entry)}`;
+}
+
+// Насколько назад можно отнести запись — как MAX_BACKDATE_DAYS на сервере.
+export const MAX_BACKDATE_DAYS = 30;
+
+// Дни для записи: сегодня и месяц назад — «Сегодня · ср, 28 окт.», «Вчера · …».
+export function pastDayOptions(today: string): { value: string; label: string }[] {
+  return Array.from({ length: MAX_BACKDATE_DAYS + 1 }, (_, i) => {
+    const day = addDays(today, -i);
+    const prefix = i === 0 ? "Сегодня · " : i === 1 ? "Вчера · " : i === 2 ? "Позавчера · " : "";
+    return { value: day, label: prefix + shortDate(day) };
+  });
 }
 
 // «Сегодня», «Вчера» или «вт, 20 окт».

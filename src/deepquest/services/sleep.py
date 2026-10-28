@@ -19,6 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from deepquest.db.models import DiaryEntry, SleepKind, SleepSession, User
+from deepquest.services import xp
 from deepquest.services.streak import focus_by_day
 
 MIN_DURATION = timedelta(minutes=5)
@@ -110,6 +111,7 @@ async def add_session(
     )
     session.add(sleep)
     await session.flush()
+    await xp.sync_sleep_xp(session, user, sleep.day)
     return sleep
 
 
@@ -118,12 +120,23 @@ async def edit_session(
 ) -> None:
     start, end = to_utc(user, data.start), to_utc(user, data.end)
     await _check(session, user, start, end, now, skip_id=sleep.id)
+    old_day = sleep.day
     sleep.kind = data.kind
     sleep.started_at, sleep.ended_at = start, end
     sleep.day = data.end.date()
     sleep.quality = _quality(data.quality)
     sleep.note = _note(data.note)
     await session.flush()
+    # День мог смениться: XP пересчитывается и у старого дня, и у нового.
+    for day in {old_day, sleep.day}:
+        await xp.sync_sleep_xp(session, user, day)
+
+
+async def delete_session(session: AsyncSession, user: User, sleep: SleepSession) -> None:
+    day = sleep.day
+    await session.delete(sleep)
+    await session.flush()
+    await xp.sync_sleep_xp(session, user, day)
 
 
 async def get_session(session: AsyncSession, user: User, sleep_id: int) -> SleepSession | None:

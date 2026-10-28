@@ -4,6 +4,7 @@ import {
   Checkbox,
   Group,
   Paper,
+  Select,
   Skeleton,
   Stack,
   Text,
@@ -22,11 +23,14 @@ import { VoiceButton } from "../components/VoiceButton";
 import { useDraft } from "../lib/drafts";
 import { EntryCard, ScoreBadges } from "../components/diary/EntryCard";
 import { EntryEditModal } from "../components/diary/EntryEditModal";
-import { SCALES, dayLabel, formatScore } from "../lib/diary";
+import { SCALES, dayLabel, formatScore, pastDayOptions } from "../lib/diary";
 import { formatMinutes } from "../lib/format";
 
-function DiaryInput() {
+function DiaryInput({ today }: { today: string }) {
   const add = useAddEntry();
+  // К какому дню запись: забыл записать вчера — выбери вчера. Пусто — сегодня.
+  const [day, setDay] = useState<string | null>(null);
+  const backdate = day !== null && day !== today;
   const goals = useGoals();
   // Черновик: запись переживает уход со страницы и обновление вкладки.
   const [text, setText] = useDraft("diary");
@@ -38,15 +42,17 @@ function DiaryInput() {
     const value = text.trim();
     if (!value || add.isPending) return;
     add.mutate(
-      { text: value, analyze: !privateEntry, goalIds },
+      { text: value, analyze: !privateEntry, goalIds, day: backdate ? day : null },
       {
         onSuccess: (result) => {
           setText("");
           setGoalIds([]);
+          setDay(null);
+          const where = backdate ? ` на ${dayLabel(day, today).toLowerCase()}` : "";
           if (result.agent_failed) {
             notifications.show({
               color: "yellow",
-              message: `Записал · +${result.xp} XP. Агент сейчас недоступен — разбери запись позже.`,
+              message: `Записал${where} · +${result.xp} XP. Агент сейчас недоступен — разбери запись позже.`,
             });
             return;
           }
@@ -56,7 +62,7 @@ function DiaryInput() {
             .join("  ");
           notifications.show({
             color: "teal",
-            title: `Записал · +${result.xp} XP`,
+            title: `Записал${where} · +${result.xp} XP`,
             message: scores || entry.summary || "",
           });
         },
@@ -94,12 +100,24 @@ function DiaryInput() {
           disabled={add.isPending}
         />
         <Group justify="space-between">
-          <Checkbox
-            size="xs"
-            label="Не отдавать агенту — оценю сам"
-            checked={privateEntry}
-            onChange={(event) => setPrivateEntry(event.currentTarget.checked)}
-          />
+          <Group gap="md">
+            <Select
+              size="xs"
+              w={190}
+              aria-label="День записи"
+              data={pastDayOptions(today)}
+              value={day ?? today}
+              onChange={(value) => setDay(value)}
+              allowDeselect={false}
+              disabled={add.isPending}
+            />
+            <Checkbox
+              size="xs"
+              label="Не отдавать агенту — оценю сам"
+              checked={privateEntry}
+              onChange={(event) => setPrivateEntry(event.currentTarget.checked)}
+            />
+          </Group>
           <Group gap="xs" wrap="nowrap">
             <VoiceButton draftKey="diary" disabled={add.isPending} />
             <Button onClick={submit} loading={add.isPending} disabled={!text.trim()}>
@@ -170,7 +188,7 @@ export function DiaryPage() {
         </Text>
       </Stack>
 
-      <DiaryInput />
+      <DiaryInput today={today} />
 
       {(goals.data?.length ?? 0) > 0 && (
         <SphereChips goals={goals.data ?? []} selected={filter} onChange={setFilter} allLabel="Все записи" />

@@ -30,6 +30,8 @@ export interface DiaryEntry {
   status: DiaryStatus;
   edited: boolean;
   spheres: DiarySphere[];
+  // Запись про другой день, чем написана: задним числом или перенесена.
+  backdated: boolean;
 }
 
 export interface DiaryDay {
@@ -65,6 +67,8 @@ export interface DiaryEdit {
   summary?: string;
   // Сферы целиком; score 1–10, 0 — без оценки.
   spheres?: { goal_id: number; score: number; good: string; bad: string }[];
+  // Перенести на другой день (YYYY-MM-DD); XP переезжает вместе с записью.
+  day?: string;
 }
 
 const DIARY_KEY = ["diary"] as const;
@@ -92,8 +96,9 @@ function useDiaryMutation<I, O>(mutationFn: (input: I) => Promise<O>) {
 
 export function useAddEntry() {
   return useDiaryMutation(
-    ({ text, analyze, goalIds }: { text: string; analyze: boolean; goalIds: number[] }) =>
-      api.post<EntryResult>("/diary", { text, analyze, goal_ids: goalIds }),
+    ({ text, analyze, goalIds, day }: { text: string; analyze: boolean; goalIds: number[]; day: string | null }) =>
+      // day — задним числом, если запись про прошлый день; null — сегодня.
+      api.post<EntryResult>("/diary", { text, analyze, goal_ids: goalIds, day }),
   );
 }
 
