@@ -26,7 +26,8 @@ function GoalRow({
   const toHex = useGoalColor();
   return (
     <ScrollArea type="never">
-      <Group gap="xs" wrap="nowrap">
+      {/* Ширина по содержимому: на телефоне кнопки не сжимаются, а ряд листается пальцем. */}
+      <Group gap="xs" wrap="nowrap" w="max-content">
         <Button
           size="xs"
           radius="xl"
@@ -69,7 +70,7 @@ function DirectionRow({
   const color = useGoalColor()(goal.color);
   return (
     <ScrollArea type="never">
-      <Group gap={6} wrap="nowrap">
+      <Group gap={6} wrap="nowrap" w="max-content">
         <Button
           size="compact-sm"
           radius="xl"

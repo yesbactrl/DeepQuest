@@ -120,6 +120,7 @@ async def run(settings: Settings) -> None:
             telegram_download(bot) if bot is not None else None,
             transcriber,
             advisor_jobs,
+            extra_hosts=settings.web_hosts,
         )
         server = _WebServer(
             uvicorn.Config(

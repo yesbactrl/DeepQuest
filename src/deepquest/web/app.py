@@ -1,5 +1,7 @@
 """Веб-приложение: JSON-API под /api и собранный React-фронтенд."""
 
+import mimetypes
+from collections.abc import Sequence
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -38,6 +40,10 @@ NOT_BUILT = """<!doctype html><meta charset="utf-8"><title>DeepQuest</title>
 </body>"""
 
 
+# Манифест для установки на телефон: без своего типа Chrome может его не принять.
+mimetypes.add_type("application/manifest+json", ".webmanifest")
+
+
 def create_app(
     sessionmaker: async_sessionmaker[AsyncSession],
     owner_telegram_id: int | None,
@@ -47,7 +53,10 @@ def create_app(
     telegram_download: TelegramDownload | None = None,
     transcriber: Transcriber | None = None,
     advisor_jobs: AdvisorJobs | None = None,
+    *,
+    extra_hosts: Sequence[str] = (),
 ) -> FastAPI:
+    """`extra_hosts` — адреса кроме localhost, например имя Mac в Tailscale для телефона."""
     app = FastAPI(
         title="DeepQuest",
         docs_url="/api/docs",
@@ -59,7 +68,7 @@ def create_app(
     )
     app.add_middleware(CsrfHeaderMiddleware)
     # Последним добавленный middleware срабатывает первым: Host проверяем раньше всего.
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=[*ALLOWED_HOSTS, *extra_hosts])
 
     app.include_router(me.router)
     app.include_router(goals.router)

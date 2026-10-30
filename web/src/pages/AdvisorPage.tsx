@@ -309,6 +309,8 @@ export function AdvisorPage() {
   const [newModel, setNewModel] = useState<string | null>(null);
   const [notesOpened, setNotesOpened] = useState(false);
   const wide = useMediaQuery("(min-width: 62em)");
+  // Отступ страницы на телефоне меньше (см. Layout): высота чата считается от него.
+  const phone = useMediaQuery("(max-width: 48em)");
   const bottom = useRef<HTMLDivElement>(null);
 
   const select = (id: number | null) => setParams(id === null ? {} : { chat: String(id) });
@@ -355,7 +357,12 @@ export function AdvisorPage() {
   const busy = chat.data?.running ?? false;
 
   return (
-    <Group align="stretch" gap="lg" wrap="nowrap" h="calc(100dvh - 56px - 2 * var(--mantine-spacing-lg))">
+    <Group
+      align="stretch"
+      gap="lg"
+      wrap="nowrap"
+      h={`calc(100dvh - 56px - 2 * var(--mantine-spacing-${phone ? "md" : "lg"}))`}
+    >
       {wide && (
         <Box w={260} style={{ flexShrink: 0 }}>
           <ScrollArea h="100%">
@@ -365,10 +372,13 @@ export function AdvisorPage() {
       )}
       <Stack style={{ flex: 1, minWidth: 0 }} gap="sm">
         <Group justify="space-between" wrap="nowrap">
-          <Title order={3} lineClamp={1}>
-            {chat.data?.title ?? "Советник"}
-          </Title>
-          <Group gap="xs" wrap="nowrap">
+          {/* На узком экране название разговора видно в выборе разговора ниже. */}
+          {wide && (
+            <Title order={3} lineClamp={1}>
+              {chat.data?.title ?? "Советник"}
+            </Title>
+          )}
+          <Group gap="xs" wrap="nowrap" ml={wide ? undefined : "auto"}>
             {!wide && (
               <Button size="xs" variant="light" leftSection={<IconPlus size={14} />} onClick={() => select(null)}>
                 Новый
@@ -405,7 +415,16 @@ export function AdvisorPage() {
                   </Text>
                   <Group gap="xs">
                     {SUGGESTIONS.map((suggestion) => (
-                      <Button key={suggestion} size="xs" variant="default" onClick={() => void onSend(suggestion)}>
+                      <Button
+                        key={suggestion}
+                        size="xs"
+                        variant="default"
+                        h="auto"
+                        py={6}
+                        // Длинная подсказка переносится, а не обрезается на телефоне.
+                        styles={{ label: { whiteSpace: "normal", textAlign: "left" } }}
+                        onClick={() => void onSend(suggestion)}
+                      >
                         {suggestion}
                       </Button>
                     ))}

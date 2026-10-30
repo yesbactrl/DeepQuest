@@ -26,7 +26,7 @@ export function SphereChips({
       : onChange(selected.includes(id) ? selected.filter((g) => g !== id) : [...selected, id]);
   return (
     <ScrollArea type="never">
-      <Group gap={6} wrap="nowrap">
+      <Group gap={6} wrap="nowrap" w="max-content">
         {allLabel && (
           <Button
             size="compact-sm"

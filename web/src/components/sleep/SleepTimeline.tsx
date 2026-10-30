@@ -1,4 +1,5 @@
 import { Box, Group, Paper, Stack, Text, Tooltip } from "@mantine/core";
+import { useMediaQuery } from "@mantine/hooks";
 import type { MouseEvent } from "react";
 
 import type { SleepDay, SleepKind, SleepSession } from "../../api/sleep";
@@ -84,6 +85,10 @@ export function SleepTimeline({
 }) {
   const byDay = new Map(days.map((d) => [d.day, d]));
   const rows = Array.from({ length: span }, (_, i) => shiftDay(today, -i));
+  // На телефоне колонки подписей уже: шкале нужно каждое место.
+  const narrow = useMediaQuery("(max-width: 36em)") ?? false;
+  const labelW = narrow ? 60 : 84;
+  const totalW = narrow ? 48 : 64;
 
   function addAt(day: string, event: MouseEvent<HTMLDivElement>) {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -96,30 +101,33 @@ export function SleepTimeline({
   }
 
   return (
-    <Paper withBorder p="md">
+    <Paper withBorder p={narrow ? "sm" : "md"}>
       <Stack gap={6}>
         <Group gap={0} wrap="nowrap">
-          <Box w={84} style={{ flexShrink: 0 }} />
+          <Box w={labelW} style={{ flexShrink: 0 }} />
           <Box style={{ position: "relative", flex: 1, height: 16 }}>
-            {TICKS.map((tick, i) => (
-              <Text
-                key={i}
-                size="xs"
-                c="dimmed"
-                style={{ position: "absolute", left: percent(i * 180), transform: "translateX(-50%)" }}
-              >
-                {String(tick % 24).padStart(2, "0")}
-              </Text>
-            ))}
+            {/* На телефоне — каждые 6 часов: подписи через 3 часа налезают друг на друга. */}
+            {TICKS.map((tick, i) =>
+              narrow && i % 2 === 1 ? null : (
+                <Text
+                  key={i}
+                  size="xs"
+                  c="dimmed"
+                  style={{ position: "absolute", left: percent(i * 180), transform: "translateX(-50%)" }}
+                >
+                  {String(tick % 24).padStart(2, "0")}
+                </Text>
+              ),
+            )}
           </Box>
-          <Box w={64} style={{ flexShrink: 0 }} />
+          <Box w={totalW} style={{ flexShrink: 0 }} />
         </Group>
         {rows.map((day) => {
           const data = byDay.get(day);
           const start = windowStart(day);
           return (
             <Group key={day} gap={0} wrap="nowrap">
-              <Text size="sm" w={84} style={{ flexShrink: 0 }} fw={day === today ? 600 : undefined}>
+              <Text size="sm" w={labelW} style={{ flexShrink: 0 }} fw={day === today ? 600 : undefined}>
                 {weekday(day, today)}
               </Text>
               <Box
@@ -140,7 +148,7 @@ export function SleepTimeline({
                   <Segment key={session.id} session={session} start={start} onOpen={() => onOpen(session)} />
                 ))}
               </Box>
-              <Text size="sm" w={64} ta="right" fw={500} c={data ? undefined : "dimmed"} style={{ flexShrink: 0 }}>
+              <Text size="sm" w={totalW} ta="right" fw={500} c={data ? undefined : "dimmed"} style={{ flexShrink: 0 }}>
                 {data ? hours(data.total_min).replace(" мин", "м").replace(" ч", "ч") : "—"}
               </Text>
             </Group>

@@ -73,18 +73,19 @@ export function Layout() {
     <AppShell
       header={{ height: 56 }}
       navbar={{ width: 220, breakpoint: "sm", collapsed: { mobile: !opened } }}
-      padding="lg"
+      padding={{ base: "md", sm: "lg" }}
     >
       <AppShell.Header>
-        <Group h="100%" px="md" justify="space-between">
-          <Group gap="sm">
+        <Group h="100%" px="md" justify="space-between" wrap="nowrap">
+          <Group gap="sm" wrap="nowrap">
             <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" />
             <img src="/favicon.svg" alt="" width={26} height={26} />
-            <Text fw={700} size="lg">
+            {/* На телефоне название прячется: место в шапке нужно таймерам. */}
+            <Text fw={700} size="lg" visibleFrom="xs">
               DeepQuest
             </Text>
           </Group>
-          <Group gap="sm" wrap="nowrap">
+          <Group gap={4} wrap="nowrap">
             <TimerWidget />
             <Tooltip label="Поиск · ⌘K">
               <ActionIcon

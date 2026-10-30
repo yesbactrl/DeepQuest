@@ -7,6 +7,7 @@ import pytest
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from deepquest.config import Settings
 from deepquest.db.models import TaskStatus, TimeEntry, ValidationVerdict
 from deepquest.services import goals, tasks, xp
 from deepquest.services.proofs import ProofStore
@@ -57,6 +58,29 @@ async def test_foreign_host_is_rejected(app: FastAPI) -> None:
     ) as stranger:
         response = await stranger.get("/api/health")
     assert response.status_code == 400
+
+
+async def test_tailscale_host_is_allowed_when_named(
+    sessionmaker: async_sessionmaker[AsyncSession], dist: Path
+) -> None:
+    mac = "mac.tail1234.ts.net"
+    app = create_app(
+        sessionmaker, ME, dist, FakeAgent(), ProofStore(dist.parent / "proofs"), extra_hosts=[mac]
+    )
+    for host, status in ((mac, 200), ("other.tail1234.ts.net", 400)):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url=f"https://{host}"
+        ) as phone:
+            assert (await phone.get("/api/goals")).status_code == status
+
+
+def test_web_hosts_setting_is_split() -> None:
+    settings = Settings(
+        _env_file=None,  # type: ignore[call-arg]
+        bot_enabled=False,
+        web_hosts=" Mac.tail1234.ts.net , ",  # type: ignore[arg-type]
+    )
+    assert settings.web_hosts == ["mac.tail1234.ts.net"]
 
 
 async def test_changes_need_csrf_header(app: FastAPI) -> None:

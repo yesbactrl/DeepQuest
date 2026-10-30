@@ -1,5 +1,5 @@
 import { ActionIcon, Badge, Group, Popover, Stack, Text, Tooltip, UnstyledButton } from "@mantine/core";
-import { useDisclosure } from "@mantine/hooks";
+import { useDisclosure, useMediaQuery } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { IconCheck, IconPlayerPause } from "@tabler/icons-react";
 import { useNavigate } from "react-router";
@@ -25,12 +25,12 @@ function TimerRow({ timer, now, onOpen }: { timer: RunningTimer; now: number; on
 
   return (
     <Group gap="xs" wrap="nowrap" justify="space-between">
-      <UnstyledButton onClick={open}>
+      <UnstyledButton onClick={open} style={{ minWidth: 0 }}>
         <Group gap={8} wrap="nowrap">
-          <Text size="sm" fw={500} maw={240} truncate>
+          <Text size="sm" fw={500} maw={240} truncate style={{ minWidth: 0 }}>
             {timer.title}
           </Text>
-          <Text size="sm" ff="monospace">
+          <Text size="sm" ff="monospace" style={{ flexShrink: 0 }}>
             {formatClock(elapsed(timer, now))}
           </Text>
         </Group>
@@ -71,14 +71,16 @@ function TimerRow({ timer, now, onOpen }: { timer: RunningTimer; now: number; on
 }
 
 // Идущие таймеры видны на любой странице: их можно остановить, не открывая задачу.
-// Таймеров может быть несколько — тогда в шапке счётчик, а список по клику.
+// Таймеров может быть несколько — тогда в шапке счётчик, а список по клику. На телефоне
+// и один таймер сворачивается до времени: название в шапку не помещается.
 export function TimerWidget() {
   const timers = useTimers().data ?? [];
   const now = useNow(timers.length > 0);
   const [opened, { toggle, close }] = useDisclosure();
+  const narrow = useMediaQuery("(max-width: 36em)") ?? false;
 
   if (timers.length === 0) return null;
-  if (timers.length === 1) {
+  if (timers.length === 1 && !narrow) {
     return (
       <Badge variant="dot" color="violet" size="lg" h={34} style={{ textTransform: "none" }} pr={4}>
         <TimerRow timer={timers[0]} now={now} />
@@ -90,12 +92,18 @@ export function TimerWidget() {
       <Popover.Target>
         <UnstyledButton aria-label="Идущие таймеры" onClick={toggle}>
           <Badge variant="dot" color="violet" size="lg" style={{ textTransform: "none", cursor: "pointer" }}>
-            {timers.length} {plural(timers.length, "таймер", "таймера", "таймеров")}
+            {timers.length === 1 ? (
+              <Text span size="sm" ff="monospace">
+                {formatClock(elapsed(timers[0], now))}
+              </Text>
+            ) : (
+              `${timers.length} ${plural(timers.length, "таймер", "таймера", "таймеров")}`
+            )}
           </Badge>
         </UnstyledButton>
       </Popover.Target>
       <Popover.Dropdown>
-        <Stack gap="xs" miw={300}>
+        <Stack gap="xs" w="min(340px, calc(100vw - 40px))">
           {timers.map((timer) => (
             <TimerRow key={timer.task_id} timer={timer} now={now} onOpen={close} />
           ))}

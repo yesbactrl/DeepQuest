@@ -51,10 +51,13 @@ class Settings(AgentSettings):
     data_dir: Path = DEFAULT_DATA_DIR
     log_level: str = "INFO"
 
-    # Веб открывается только с этого Mac: входа нет, поэтому наружу его не выставляем.
+    # Веб слушает только этот Mac: входа нет, поэтому наружу его не выставляем.
     web_enabled: bool = True
     web_host: str = "127.0.0.1"
     web_port: int = 8484
+    # Ещё адреса, по которым веб открывают: имя Mac в Tailscale (`mac.tailXXXX.ts.net`),
+    # куда `tailscale serve` проксирует запросы с телефона. Через запятую.
+    web_hosts: Annotated[list[str], NoDecode] = []
     web_dist_dir: Path = PROJECT_ROOT / "web" / "dist"
     # Журнал каждого запроса к вебу. В службе (launchd) выключен: фронтенд опрашивает таймер
     # каждые несколько секунд, и лог за день разрастался бы на мегабайты.
@@ -73,6 +76,13 @@ class Settings(AgentSettings):
             return [int(part) for part in value.replace(" ", "").split(",") if part]
         if isinstance(value, int):
             return [value]
+        return value
+
+    @field_validator("web_hosts", mode="before")
+    @classmethod
+    def _split_hosts(cls, value: object) -> object:
+        if isinstance(value, str):
+            return [part.strip().lower() for part in value.split(",") if part.strip()]
         return value
 
     @model_validator(mode="after")
