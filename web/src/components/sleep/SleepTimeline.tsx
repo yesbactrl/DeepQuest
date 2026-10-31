@@ -21,9 +21,8 @@ function percent(minutes: number): string {
   return `${(Math.min(Math.max(minutes, 0), WINDOW_MIN) / WINDOW_MIN) * 100}%`;
 }
 
-function weekday(day: string, today: string): string {
-  if (day === today) return "Сегодня";
-  if (day === shiftDay(today, -1)) return "Вчера";
+// У всех строк одна подпись — «сб, 31»: со «Сегодня» и «Вчера» не видно, какое сегодня число.
+function weekday(day: string): string {
   return new Date(`${day}T12:00:00`).toLocaleDateString("ru-RU", { weekday: "short", day: "numeric" });
 }
 
@@ -127,8 +126,15 @@ export function SleepTimeline({
           const start = windowStart(day);
           return (
             <Group key={day} gap={0} wrap="nowrap">
-              <Text size="sm" w={labelW} style={{ flexShrink: 0 }} fw={day === today ? 600 : undefined}>
-                {weekday(day, today)}
+              <Text
+                size="sm"
+                w={labelW}
+                style={{ flexShrink: 0 }}
+                fw={day === today ? 600 : undefined}
+                c={day === today ? "violet" : undefined}
+                title={day === today ? "Сегодня" : undefined}
+              >
+                {weekday(day)}
               </Text>
               <Box
                 onClick={(event) => addAt(day, event)}
